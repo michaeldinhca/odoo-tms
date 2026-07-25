@@ -21,9 +21,12 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
+      - name: Generate ephemeral test Fernet key
+        # Generated fresh per run, never committed — a hardcoded key here
+        # would be a real (if unused) secret sitting in the repo.
+        run: |
+          echo "FERNET_KEY=$(python -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
       - run: pytest -q
-        env:
-          FERNET_KEY: "GKICa2e0RaJeta9o8ieWJtsHbYxQZTYy1TTyzGemlmQ="
 
   frontend-lint-build:
     runs-on: ubuntu-latest
