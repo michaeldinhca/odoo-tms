@@ -39,13 +39,28 @@ export function getTenantId(): string | null {
   return localStorage.getItem(TENANT_ID_KEY);
 }
 
-function decodeTenantId(token: string): string | null {
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.tenant_id ?? null;
+    return JSON.parse(atob(token.split(".")[1]));
   } catch {
     return null;
   }
+}
+
+function decodeTenantId(token: string): string | null {
+  const payload = decodeJwtPayload(token);
+  return (payload?.tenant_id as string | undefined) ?? null;
+}
+
+/** Whether a token is present *and* its `exp` claim hasn't passed yet — a
+ * present-but-expired token is treated the same as no token at all, so
+ * callers don't render a page that's guaranteed to fail every API call. */
+export function hasValidSession(): boolean {
+  const token = getToken();
+  if (!token) return false;
+  const exp = decodeJwtPayload(token)?.exp as number | undefined;
+  if (typeof exp !== "number") return false;
+  return Date.now() < exp * 1000;
 }
 
 class ApiError extends Error {
@@ -66,6 +81,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+
+  if (response.status === 401 && path !== "/auth/login") {
+    // The session was rejected server-side for a reason the client-side
+    // exp check above couldn't have caught (e.g. JWT_SECRET rotated,
+    // token tampered with). Bounce to login rather than let every caller
+    // treat this the same as "nothing saved yet" — see DECISIONS.md.
+    clearSession();
+    window.location.href = "/login";
+    throw new ApiError(401, "Session expired — redirecting to login");
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

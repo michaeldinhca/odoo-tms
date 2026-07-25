@@ -73,6 +73,8 @@ gets done.
       through the mapping registry instead of hardcoded strings (behavior
       unchanged today since every default equals what was hardcoded before
       — confirmed by the full existing test suite passing unmodified)
+- [x] Session lifetime extended `JWT_EXPIRE_MINUTES` 60 → 10080 (7 days —
+      see DECISIONS.md); fixed the real bug this was masking (see Frontend)
 
 ## Frontend
 
@@ -91,6 +93,20 @@ gets done.
 - [x] Drivers screen: list + create/edit form + Odoo hr.employee link picker
 - [x] Connection page shows detected Odoo version ("Connected — Odoo 17.0")
       and a warning when a version change was detected on the last check
+- [x] Fixed a real bug: an expired session (JWT) wasn't detected anywhere —
+      `RequireAuth` only checked token *presence*, and every data-loading
+      page's `.catch(() => {})` swallowed the resulting 401 identically to
+      "nothing saved yet." Symptoms: Odoo connection appeared to vanish on
+      return visits, the "Test connection" button disappeared (gated on a
+      credential load that silently failed), and Save/Test showed
+      "Could not validate credentials" — which was about the expired login
+      session, not the Odoo API key. Fixed with a client-side `exp`-claim
+      check (`hasValidSession()` in `api/client.ts`, used by
+      `RequireAuth`/`NavBar`) plus a centralized 401 handler in `request()`
+      that clears the session and redirects to `/login`. Verified live: the
+      Odoo API key the user reported as "invalid" connected successfully
+      once a valid session was used — confirming it was never actually a
+      credential problem
 
 ## Infra
 
@@ -135,6 +151,9 @@ gets done.
 
 ## Next up
 
+- [ ] No refresh-token mechanism — at 7 days, a session still eventually
+      hard-expires and the user must log in again from scratch. Fine for
+      now; revisit if 7 days turns out to be too short in practice
 - [ ] Real Odoo 19 instance with volume/lat-lon data to confirm those field
       mappings (see "Open questions" below) — still placeholder zeros
 - [ ] User invite/registration flow (currently seed-script only)

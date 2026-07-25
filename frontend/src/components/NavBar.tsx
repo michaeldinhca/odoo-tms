@@ -1,9 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
-import { clearSession, getToken } from "../api/client";
+import { clearSession, hasValidSession } from "../api/client";
 
 export default function NavBar() {
   const navigate = useNavigate();
-  const loggedIn = Boolean(getToken());
+  const loggedIn = hasValidSession();
 
   function handleLogout() {
     clearSession();

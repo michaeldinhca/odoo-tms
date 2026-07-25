@@ -281,3 +281,32 @@ models) should go through it rather than growing its own inline check.
 a field that might not exist" — easier to get right once, easier to find
 when auditing which fields degrade gracefully vs. which are assumed
 present.
+
+---
+
+## 2026-07-25 — Session lifetime extended to 7 days; frontend now handles expiry explicitly
+
+**Decision:** `JWT_EXPIRE_MINUTES` default changed from `60` to `10080`
+(7 days). Separately (and this part isn't a judgment call, it's a bug fix):
+the frontend now actually detects an expired/invalid session — a decoded-
+client-side expiry check in `RequireAuth`/`NavBar` (`hasValidSession()` in
+`app/api/client.ts`) redirects to `/login` before rendering a protected
+page, and `request()`'s 401 handling clears the stale session and
+redirects for any case the client-side check can't catch (e.g. the
+backend restarting with a new `JWT_SECRET`).
+
+**Why the extension:** the 60-minute default meant a dispatcher using the
+app across a shift would get logged out mid-use — and worse, because nothing
+detected the expiry (see the bug fix above), it silently manifested as
+"my Odoo connection disappeared" and "invalid credentials" errors that were
+actually about the login session, not Odoo. Reported directly by the user
+after hitting exactly this. 7 days trades off a longer window of exposure
+if a token leaks against not re-authenticating constantly for an internal
+dispatcher tool; revisit if this system gets exposed to a less trusted user
+base or needs tighter compliance requirements.
+
+**Why the frontend fix matters independently of the extension:** even at
+7 days, a token will eventually expire, and nothing about the extension
+fixes the underlying gap — the app must always be able to tell "not
+configured yet" apart from "you got logged out." This was a real bug, not
+just tuned around.
