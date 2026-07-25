@@ -103,3 +103,87 @@ export interface Warehouse {
   created_at: string;
   updated_at: string;
 }
+
+export type FleetVehicleType = "van" | "truck" | "motorbike" | "three_wheeler" | "other";
+export type FleetVehicleStatus = "active" | "inactive" | "maintenance";
+export type DriverStatus = "active" | "locked" | "inactive";
+export type OdooLinkStatus = "unlinked" | "linked";
+
+export interface FleetVehicle {
+  id: string;
+  tenant_id: string;
+  name: string;
+  license_plate: string | null;
+  vehicle_type: FleetVehicleType;
+  payload_capacity_kg: number | null;
+  volume_capacity_m3: number | null;
+  fuel_consumption_per_100km: number | null;
+  home_warehouse_id: string | null;
+  status: FleetVehicleStatus;
+  odoo_fleet_vehicle_id: number | null;
+  odoo_link_status: OdooLinkStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FleetVehicleInput {
+  name: string;
+  license_plate?: string | null;
+  vehicle_type?: FleetVehicleType;
+  payload_capacity_kg?: number | null;
+  volume_capacity_m3?: number | null;
+  fuel_consumption_per_100km?: number | null;
+  home_warehouse_id?: string | null;
+  status?: FleetVehicleStatus;
+}
+
+export interface Driver {
+  id: string;
+  tenant_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  license_number: string | null;
+  id_passport_number: string | null;
+  status: DriverStatus;
+  locked_until: string | null;
+  assigned_vehicle_id: string | null;
+  odoo_employee_id: number | null;
+  odoo_link_status: OdooLinkStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DriverInput {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  license_number?: string | null;
+  id_passport_number?: string | null;
+  status?: DriverStatus;
+  locked_until?: string | null;
+  assigned_vehicle_id?: string | null;
+}
+
+export interface OdooFleetVehicleOption {
+  id: number;
+  name: string;
+  license_plate: string;
+}
+
+export interface OdooFleetVehicleList {
+  available: boolean;
+  vehicles: OdooFleetVehicleOption[];
+}
+
+export interface OdooEmployeeOption {
+  id: number;
+  name: string;
+  work_phone: string;
+  mobile_phone: string;
+}
+
+export interface OdooEmployeeList {
+  available: boolean;
+  employees: OdooEmployeeOption[];
+}

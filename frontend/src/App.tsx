@@ -2,9 +2,11 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import NavBar from "./components/NavBar";
 import RequireAuth from "./components/RequireAuth";
 import ConnectionPage from "./pages/ConnectionPage";
+import DriversPage from "./pages/DriversPage";
 import LoginPage from "./pages/LoginPage";
 import OperationTypesPage from "./pages/OperationTypesPage";
 import PlanningPage from "./pages/PlanningPage";
+import VehiclesPage from "./pages/VehiclesPage";
 import WarehousesPage from "./pages/WarehousesPage";
 
 export default function App() {
@@ -34,6 +36,22 @@ export default function App() {
           element={
             <RequireAuth>
               <WarehousesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/vehicles"
+          element={
+            <RequireAuth>
+              <VehiclesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/drivers"
+          element={
+            <RequireAuth>
+              <DriversPage />
             </RequireAuth>
           }
         />

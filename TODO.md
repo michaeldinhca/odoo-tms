@@ -44,6 +44,17 @@ gets done.
       isn't installed — checked via `fields_get`, never errors), and note;
       persisted locally to `synced_pickings` as a side effect of every
       `/planning/run` call
+- [x] `vehicles` / `drivers` tables — locally-owned, no Odoo link required to
+      exist; CRUD + delete guards (vehicle: blocked if a driver references
+      it; driver: blocked while active — see DECISIONS.md)
+- [x] Optional Odoo `fleet.vehicle`/`hr.employee` browse + link/unlink —
+      browse-only (never auto-creates locally), linking never overwrites
+      local fields, gracefully returns `available:false` when the Fleet/HR
+      module isn't installed (checked via `model_exists`, no error)
+- [x] Stale Odoo link detection: linked vehicles/drivers get flagged `stale`
+      (not silently unlinked, reference kept) when they disappear from a
+      later Odoo browse; self-heals back to `linked` if they reappear (see
+      DECISIONS.md "Stale Odoo links, not silent unlinking")
 
 ## Frontend
 
@@ -58,6 +69,8 @@ gets done.
 - [x] Warehouses screen: checkbox per row + "Resync List"
 - [x] Planner results table: added status, scheduled date, source document,
       warehouse columns
+- [x] Vehicles screen: list + create/edit form + Odoo fleet.vehicle link picker
+- [x] Drivers screen: list + create/edit form + Odoo hr.employee link picker
 
 ## Infra
 
@@ -82,6 +95,15 @@ gets done.
       `shipping_weight` all came back with real values (this instance has
       the `delivery` module installed); warehouse resolution via the
       operation-type join confirmed correct on every stop
+- [x] Vehicle/driver management verified against the same real instance:
+      both Fleet and HR modules installed and browsable (6 real fleet
+      vehicles, 29 real employees with phone numbers); linked a local
+      vehicle + driver to real Odoo records; delete guards blocked deleting
+      a vehicle referenced by a driver and blocked deleting an active
+      driver; stale-link detection flagged a link to a nonexistent Odoo id
+      as `stale` on the next browse, then self-healed back to `linked` once
+      re-linked to a real id — full round trip confirmed live, not just
+      unit-tested
 
 ## Next up
 
@@ -99,7 +121,18 @@ gets done.
       (see DECISIONS.md)
 - [ ] Stale/removed operation types or warehouses (deleted in Odoo, no longer
       returned by refresh) aren't pruned or flagged locally — `last_seen_at`
-      just stops advancing; no UI surfaces that yet
+      just stops advancing; no UI surfaces that yet (vehicles/drivers now
+      have this exact pattern via `odoo_link_status="stale"` — could unify)
+- [ ] Cost log per vehicle — explicitly deferred, not built this batch;
+      belongs in a later batch once there's a real usage pattern to design
+      against
+- [ ] Real trip/assignment-history table — would let the driver delete guard
+      check actual current assignments instead of the `status="active"`
+      stand-in (see DECISIONS.md), and would let the vehicle delete guard
+      check more than just `driver.assigned_vehicle_id`
+- [ ] No create/browse UI exists yet for `synced_warehouses`-less tenants to
+      pick a vehicle's `home_warehouse_id` before any warehouse sync has run
+      — the dropdown is just empty until Warehouses are refreshed
 
 ## Open questions (need confirmation before implementing)
 

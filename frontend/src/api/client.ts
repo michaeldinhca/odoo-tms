@@ -1,8 +1,14 @@
 import type {
+  Driver,
+  DriverInput,
+  FleetVehicle,
+  FleetVehicleInput,
   OdooCompany,
   OdooCredential,
   OdooCredentialTestResult,
   OdooCredentialUpsert,
+  OdooEmployeeList,
+  OdooFleetVehicleList,
   OperationType,
   PlanningRunResult,
   TokenResponse,
@@ -157,5 +163,99 @@ export function setWarehouseSync(
   return request<Warehouse>(`/tenants/${tenantId}/warehouses/${warehouseId}/sync`, {
     method: "PUT",
     body: JSON.stringify({ is_synced: isSynced }),
+  });
+}
+
+export function listVehicles(tenantId: string): Promise<FleetVehicle[]> {
+  return request<FleetVehicle[]>(`/tenants/${tenantId}/vehicles`);
+}
+
+export function createVehicle(tenantId: string, payload: FleetVehicleInput): Promise<FleetVehicle> {
+  return request<FleetVehicle>(`/tenants/${tenantId}/vehicles`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateVehicle(
+  tenantId: string,
+  vehicleId: string,
+  payload: Partial<FleetVehicleInput>,
+): Promise<FleetVehicle> {
+  return request<FleetVehicle>(`/tenants/${tenantId}/vehicles/${vehicleId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteVehicle(tenantId: string, vehicleId: string): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/vehicles/${vehicleId}`, { method: "DELETE" });
+}
+
+export function listOdooFleetVehicles(tenantId: string): Promise<OdooFleetVehicleList> {
+  return request<OdooFleetVehicleList>(`/tenants/${tenantId}/vehicles/odoo-fleet-vehicles`);
+}
+
+export function linkVehicleToOdoo(
+  tenantId: string,
+  vehicleId: string,
+  odooFleetVehicleId: number,
+): Promise<FleetVehicle> {
+  return request<FleetVehicle>(`/tenants/${tenantId}/vehicles/${vehicleId}/odoo-link`, {
+    method: "PUT",
+    body: JSON.stringify({ odoo_fleet_vehicle_id: odooFleetVehicleId }),
+  });
+}
+
+export function unlinkVehicleFromOdoo(tenantId: string, vehicleId: string): Promise<FleetVehicle> {
+  return request<FleetVehicle>(`/tenants/${tenantId}/vehicles/${vehicleId}/odoo-link`, {
+    method: "DELETE",
+  });
+}
+
+export function listDrivers(tenantId: string): Promise<Driver[]> {
+  return request<Driver[]>(`/tenants/${tenantId}/drivers`);
+}
+
+export function createDriver(tenantId: string, payload: DriverInput): Promise<Driver> {
+  return request<Driver>(`/tenants/${tenantId}/drivers`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateDriver(
+  tenantId: string,
+  driverId: string,
+  payload: Partial<DriverInput>,
+): Promise<Driver> {
+  return request<Driver>(`/tenants/${tenantId}/drivers/${driverId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteDriver(tenantId: string, driverId: string): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/drivers/${driverId}`, { method: "DELETE" });
+}
+
+export function listOdooEmployees(tenantId: string): Promise<OdooEmployeeList> {
+  return request<OdooEmployeeList>(`/tenants/${tenantId}/drivers/odoo-employees`);
+}
+
+export function linkDriverToOdoo(
+  tenantId: string,
+  driverId: string,
+  odooEmployeeId: number,
+): Promise<Driver> {
+  return request<Driver>(`/tenants/${tenantId}/drivers/${driverId}/odoo-link`, {
+    method: "PUT",
+    body: JSON.stringify({ odoo_employee_id: odooEmployeeId }),
+  });
+}
+
+export function unlinkDriverFromOdoo(tenantId: string, driverId: string): Promise<Driver> {
+  return request<Driver>(`/tenants/${tenantId}/drivers/${driverId}/odoo-link`, {
+    method: "DELETE",
   });
 }

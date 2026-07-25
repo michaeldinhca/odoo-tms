@@ -18,6 +18,8 @@ export default function NavBar() {
       <Link to="/connection">Odoo Connection</Link>
       <Link to="/operation-types">Operation Types</Link>
       <Link to="/warehouses">Warehouses</Link>
+      <Link to="/vehicles">Vehicles</Link>
+      <Link to="/drivers">Drivers</Link>
       <button onClick={handleLogout}>Log out</button>
     </nav>
   );

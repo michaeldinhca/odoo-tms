@@ -149,3 +149,57 @@ enriched fields. Reusing the existing planning-run pull as the sync trigger
 satisfies both without inventing an unrequested second pipeline. Revisit if
 a decoupled "sync pickings without running a plan" action turns out to be
 needed.
+
+---
+
+## 2026-07-25 — Vehicles and drivers are locally-owned; Odoo is an optional cross-reference only
+
+**Decision:** `vehicles` and `drivers` are first-class tables owned by this
+system. A vehicle or driver can exist with `odoo_link_status="unlinked"` and
+no Odoo reference at all — e.g. a subcontracted truck that was never in
+Odoo. Linking sets `odoo_fleet_vehicle_id`/`odoo_employee_id` and flips
+`odoo_link_status` to `"linked"`; it never writes to or reads back any other
+local field, so linking can never silently overwrite data the dispatcher
+entered by hand.
+
+**Why:** Odoo's `fleet.vehicle`/`hr.employee` don't model most of what this
+system needs (payload capacity, fuel consumption, driver lock windows,
+etc.), and requiring an Odoo record to exist before a vehicle/driver can be
+used here would block onboarding fleets that were never in Odoo to begin
+with.
+
+---
+
+## 2026-07-25 — Stale Odoo links, not silent unlinking
+
+**Decision:** `odoo_link_status` has a third state, `"stale"`, alongside
+`"unlinked"`/`"linked"`. Every time the Odoo fleet.vehicle or hr.employee
+list is browsed (`GET .../odoo-fleet-vehicles`, `GET .../odoo-employees`),
+every locally `linked`/`stale` record for that tenant is checked against the
+just-fetched id set: still present → `linked`; no longer present → `stale`.
+The `odoo_fleet_vehicle_id`/`odoo_employee_id` value itself is never cleared
+by this check — only the status flag changes, and it self-heals back to
+`linked` if the Odoo record reappears on a later browse. This check is
+skipped entirely when the Odoo module itself is unavailable (`available:
+false`) — that's a different signal than "this one record was deleted" and
+flagging every link stale in that case would be misleading.
+
+**Why:** A vehicle/driver deleted in Odoo after being linked here shouldn't
+silently lose its local data or its link — the dispatcher should see that
+something changed and decide what to do, not have it happen invisibly.
+
+---
+
+## 2026-07-25 — Driver delete guard: "active" status stands in for "has current assignments"
+
+**Decision:** `DELETE .../drivers/{id}` is blocked when `driver.status ==
+"active"`, full stop. There's no trip/assignment-history table yet (that's
+future work — see TODO.md), so "has current assignments" isn't literally
+checkable; active status is the closest real signal available today, and
+the caller can always set status to `inactive` first if they're sure.
+Vehicle's delete guard, by contrast, checks something that genuinely exists
+today: whether any `driver.assigned_vehicle_id` points at it.
+
+**Why:** Blocking on a concept ("current assignments") that has no backing
+data would either be unimplementable or require inventing a table nobody
+asked for yet. Revisit once real trip/assignment tracking exists.

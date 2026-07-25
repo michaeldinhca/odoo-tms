@@ -141,6 +141,54 @@ regardless of whether FFD assigned it to a vehicle.
 
 Unique on `(tenant_id, odoo_picking_id)`.
 
+### `vehicles`
+
+Locally-owned, system-of-record table — a vehicle can exist here with no
+Odoo link at all (see DECISIONS.md "Vehicles and drivers are locally-owned").
+
+| column                       | type              | notes                                    |
+|--------------------------------|-------------------|---------------------------------------------|
+| id                            | UUID (PK)         |                                               |
+| tenant_id                     | UUID (FK)         | references `tenants.id`                      |
+| name                          | text              | required                                     |
+| license_plate                 | text, nullable    |                                               |
+| vehicle_type                  | text              | `van`/`truck`/`motorbike`/`three_wheeler`/`other`, default `van` |
+| payload_capacity_kg           | float, nullable   |                                               |
+| volume_capacity_m3            | float, nullable   |                                               |
+| fuel_consumption_per_100km    | float, nullable   |                                               |
+| home_warehouse_id             | UUID (FK), nullable | references `synced_warehouses.id`          |
+| status                        | text              | `active`/`inactive`/`maintenance`, default `active` |
+| odoo_fleet_vehicle_id         | integer, nullable | optional cross-reference to Odoo `fleet.vehicle.id` — reference only, never a data source |
+| odoo_link_status              | text              | `unlinked`/`linked`/`stale`, default `unlinked` (see DECISIONS.md "Stale Odoo links") |
+| created_at                    | timestamptz       |                                               |
+| updated_at                    | timestamptz       |                                               |
+
+Delete is blocked if any `driver.assigned_vehicle_id` references the vehicle.
+
+### `drivers`
+
+Same locally-owned pattern as `vehicles`.
+
+| column                | type              | notes                                        |
+|-------------------------|-------------------|-------------------------------------------------|
+| id                     | UUID (PK)         |                                                   |
+| tenant_id              | UUID (FK)         | references `tenants.id`                          |
+| name                   | text              | required                                         |
+| phone                  | text, nullable    |                                                   |
+| email                  | text, nullable    |                                                   |
+| license_number         | text, nullable    |                                                   |
+| id_passport_number     | text, nullable    |                                                   |
+| status                 | text              | `active`/`locked`/`inactive`, default `active`   |
+| locked_until           | timestamptz, nullable | used when `status="locked"` for temp-lock windows |
+| assigned_vehicle_id    | UUID (FK), nullable | references `vehicles.id` — a driver's current/default vehicle, separate from any future per-trip assignment |
+| odoo_employee_id       | integer, nullable | optional cross-reference to Odoo `hr.employee.id` — reference only, never a data source |
+| odoo_link_status       | text              | `unlinked`/`linked`/`stale`, default `unlinked`  |
+| created_at             | timestamptz       |                                                   |
+| updated_at             | timestamptz       |                                                   |
+
+Delete is blocked while `status="active"` (see DECISIONS.md — a stand-in for
+"has current assignments" until real assignment tracking exists).
+
 ## Core planning flow — data shapes
 
 ### Address (shared shape)
@@ -252,6 +300,22 @@ address context needed to actually dispatch it, not just the picking ID.
 | GET    | `/tenants/{id}/warehouses`           | list synced warehouses (local)                     | implemented |
 | POST   | `/tenants/{id}/warehouses/refresh`   | pull `stock.warehouse` from Odoo, upsert (preserves existing `is_synced`) | implemented |
 | PUT    | `/tenants/{id}/warehouses/{row_id}/sync` | toggle `is_synced` for one warehouse            | implemented |
+| GET    | `/tenants/{id}/vehicles`             | list vehicles (filter by `status_filter`, `home_warehouse_id`) | implemented |
+| POST   | `/tenants/{id}/vehicles`             | create a vehicle                                   | implemented |
+| GET    | `/tenants/{id}/vehicles/odoo-fleet-vehicles` | browse Odoo `fleet.vehicle` records (never auto-creates locally); also refreshes stale-link flags | implemented |
+| GET    | `/tenants/{id}/vehicles/{vehicle_id}` | get one vehicle                                   | implemented |
+| PUT    | `/tenants/{id}/vehicles/{vehicle_id}` | partial update (only provided fields applied)      | implemented |
+| DELETE | `/tenants/{id}/vehicles/{vehicle_id}` | delete; blocked if a driver's `assigned_vehicle_id` references it | implemented |
+| PUT    | `/tenants/{id}/vehicles/{vehicle_id}/odoo-link` | link to an Odoo fleet.vehicle id (reference only) | implemented |
+| DELETE | `/tenants/{id}/vehicles/{vehicle_id}/odoo-link` | unlink                                     | implemented |
+| GET    | `/tenants/{id}/drivers`              | list drivers (filter by `status_filter`)           | implemented |
+| POST   | `/tenants/{id}/drivers`              | create a driver                                    | implemented |
+| GET    | `/tenants/{id}/drivers/odoo-employees` | browse Odoo `hr.employee` records (never auto-creates locally); also refreshes stale-link flags | implemented |
+| GET    | `/tenants/{id}/drivers/{driver_id}`  | get one driver                                     | implemented |
+| PUT    | `/tenants/{id}/drivers/{driver_id}`  | partial update (only provided fields applied)      | implemented |
+| DELETE | `/tenants/{id}/drivers/{driver_id}`  | delete; blocked while `status="active"`            | implemented |
+| PUT    | `/tenants/{id}/drivers/{driver_id}/odoo-link` | link to an Odoo hr.employee id (reference only) | implemented |
+| DELETE | `/tenants/{id}/drivers/{driver_id}/odoo-link` | unlink                                     | implemented |
 | POST   | `/planning/run`                      | trigger a planning run for a tenant                | implemented |
 | GET    | `/planning/results/{id}`             | fetch a planning run's result                      | implemented |
 
@@ -346,3 +410,28 @@ the one real instance available and it has the module).
 |-------------|------------|---------------------------------|
 | id          | `id`       | confirmed against real instance |
 | name        | `name`     | confirmed against real instance |
+
+### `fleet.vehicle` (for vehicle-to-Odoo linking — distinct from the planning-side capacity fields above, which are still unconfirmed)
+
+| our field       | odoo field       | status       |
+|-----------------|--------------------|---------------|
+| name            | `name`             | confirmed against real instance (e.g. "Ford/F150/DYLC051") |
+| license_plate   | `license_plate`    | confirmed against real instance |
+
+Deliberately minimal — the task calling for this batch warned not to assume
+fields that require the Fleet module's optional add-ons; `name` and
+`license_plate` are core `fleet.vehicle` fields present regardless of which
+add-ons are installed. Whether the model exists at all is checked via
+`OdooClient.model_exists("fleet.vehicle")` (uses `fields_get`) before ever
+calling `search_read` — if the Fleet module isn't installed, this returns
+`available: false` instead of erroring.
+
+### `hr.employee` (for driver-to-Odoo linking)
+
+| our field       | odoo field       | status       |
+|-----------------|--------------------|---------------|
+| name            | `name`             | confirmed against real instance |
+| work_phone      | `work_phone`       | confirmed against real instance |
+| mobile_phone    | `mobile_phone`     | confirmed against real instance (e.g. "0357543504" on one test employee) |
+
+Same `model_exists("hr.employee")` gate as `fleet.vehicle` above.
