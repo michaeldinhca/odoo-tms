@@ -55,6 +55,24 @@ gets done.
       (not silently unlinked, reference kept) when they disappear from a
       later Odoo browse; self-heals back to `linked` if they reappear (see
       DECISIONS.md "Stale Odoo links, not silent unlinking")
+- [x] Odoo version detection: `common.version()` called (re-checked, not
+      just once) on every `POST .../credentials/test`, persisted on the
+      credential row, `version_change_detected` flagged (not silently
+      overwritten) when the major version changes between checks
+- [x] Version-aware field mapping registry (`app/odoo_mappings/`, one file
+      per model, `resolve_field(model, logical_name, version_major)`) with a
+      `"default"` fallback — every version block is currently empty (no
+      real version-specific difference confirmed yet, none guessed at, per
+      DECISIONS.md)
+- [x] Graceful-degradation consolidated into
+      `app.services.odoo_field_resolution.resolve_optional_field` (mapping
+      lookup + live `fields_get()` check) — replaces the one-off
+      `shipping_weight`-only check from the picking-enrichment batch
+- [x] Picking enrichment, operation-type sync, warehouse sync, and
+      fleet.vehicle/hr.employee lookup all now resolve Odoo-side field names
+      through the mapping registry instead of hardcoded strings (behavior
+      unchanged today since every default equals what was hardcoded before
+      — confirmed by the full existing test suite passing unmodified)
 
 ## Frontend
 
@@ -71,6 +89,8 @@ gets done.
       warehouse columns
 - [x] Vehicles screen: list + create/edit form + Odoo fleet.vehicle link picker
 - [x] Drivers screen: list + create/edit form + Odoo hr.employee link picker
+- [x] Connection page shows detected Odoo version ("Connected — Odoo 17.0")
+      and a warning when a version change was detected on the last check
 
 ## Infra
 
@@ -104,6 +124,14 @@ gets done.
       as `stale` on the next browse, then self-healed back to `linked` once
       re-linked to a real id — full round trip confirmed live, not just
       unit-tested
+- [x] Odoo version detection verified against the same real instance:
+      `common.version()` correctly reports Odoo 19.0+e; simulated a stale
+      stored version via direct DB update and confirmed
+      `version_change_detected` flips `True` on the next test-connection,
+      then settles back to `False` afterward; operation-type refresh and a
+      full planning run both re-verified working end-to-end through the new
+      field-resolution wiring (not just passing in isolation against a fake
+      client)
 
 ## Next up
 
@@ -133,6 +161,18 @@ gets done.
 - [ ] No create/browse UI exists yet for `synced_warehouses`-less tenants to
       pick a vehicle's `home_warehouse_id` before any warehouse sync has run
       — the dropdown is just empty until Warehouses are refreshed
+- [ ] `stock.move` (items_summary) and `res.company` (company selection)
+      aren't wired to the version-aware mapping registry yet — deliberately
+      out of this batch's scope (see DECISIONS.md), still hardcoded
+- [ ] Every version block in `app/odoo_mappings/` is currently empty — no
+      access yet to an Odoo instance running an older major version (13,
+      15, 16) to confirm whether any real field-name differences exist to
+      map. The registry is ready for them; nothing has been verified to
+      actually differ
+- [ ] `version_change_detected` has no "acknowledge/dismiss" action — it
+      just gets recomputed fresh on each test-connection call (true = the
+      *last* check saw a change). No historical log of past changes is kept
+      beyond that one flag
 
 ## Open questions (need confirmation before implementing)
 

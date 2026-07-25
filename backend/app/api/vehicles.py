@@ -88,7 +88,9 @@ def list_odoo_fleet_vehicles(
 
     client = build_client(credential)
     try:
-        available, vehicles = fetch_fleet_vehicles(client, company_id=credential.company_id)
+        available, vehicles = fetch_fleet_vehicles(
+            client, company_id=credential.company_id, version_major=credential.server_version_major
+        )
     except ODOO_ERRORS as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

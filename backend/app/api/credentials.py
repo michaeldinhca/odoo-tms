@@ -16,6 +16,7 @@ from app.schemas.credentials import (
 )
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
+from app.services.odoo_version import detect_and_store_version
 
 router = APIRouter(prefix="/tenants/{tenant_id}/credentials", tags=["credentials"])
 
@@ -86,7 +87,23 @@ def test_credential(
 
     client = build_client(credential)
     success, detail = client.test_connection()
-    return OdooCredentialTestResult(success=success, detail=detail)
+
+    if success:
+        try:
+            detect_and_store_version(db, credential, client)
+        except (OdooAuthError, xmlrpc.client.Fault, OSError):
+            # The auth/data connection is fine (that's what `success` means)
+            # — a hiccup fetching version info specifically shouldn't fail
+            # the whole test. Version fields just stay whatever they were.
+            pass
+
+    return OdooCredentialTestResult(
+        success=success,
+        detail=detail,
+        server_version=credential.server_version,
+        server_version_major=credential.server_version_major,
+        version_change_detected=credential.version_change_detected,
+    )
 
 
 @router.get("/companies", response_model=list[OdooCompany])

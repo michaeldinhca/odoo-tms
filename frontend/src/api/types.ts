@@ -10,6 +10,12 @@ export interface OdooCredential {
   username: string;
   company_id: number | null;
   company_name: string | null;
+  server_version: string | null;
+  server_version_major: number | null;
+  server_serie: string | null;
+  protocol_version: number | null;
+  version_checked_at: string | null;
+  version_change_detected: boolean;
   created_at: string;
 }
 
@@ -23,6 +29,9 @@ export interface OdooCredentialUpsert {
 export interface OdooCredentialTestResult {
   success: boolean;
   detail: string;
+  server_version: string | null;
+  server_version_major: number | null;
+  version_change_detected: boolean;
 }
 
 export interface OdooCompany {

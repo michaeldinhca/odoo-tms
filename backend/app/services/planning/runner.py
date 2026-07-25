@@ -13,10 +13,14 @@ plain dicts/sets — see app.services.sync_config for that side.
 """
 
 from app.services.odoo_client import OdooClient
+from app.services.odoo_field_resolution import resolve_optional_field, resolve_required_field
 from app.services.odoo_relational import parse_odoo_datetime, rel_id, rel_name
 from app.services.planning.ffd import Address, Order, Vehicle, assign_orders_ffd
 from app.services.planning.filo import sequence_filo
 from app.services.planning.haversine import estimate_duration_min, haversine_distance_km
+
+_PICKING_MODEL = "stock.picking"
+_PARTNER_MODEL = "res.partner"
 
 
 def fetch_open_orders(
@@ -24,6 +28,7 @@ def fetch_open_orders(
     company_id: int | None = None,
     synced_operation_type_ids: set[int] | None = None,
     warehouse_by_picking_type: dict[int, dict] | None = None,
+    version_major: int | None = None,
 ) -> list[Order]:
     """Pulls open stock.picking records and enriches them with customer,
     address, items, and warehouse context.
@@ -34,6 +39,11 @@ def fetch_open_orders(
     `None` skips the filter entirely (used by tests that don't care about
     operation-type config). See DECISIONS.md "Operation type / warehouse
     sync gating".
+
+    `version_major`: the tenant's detected Odoo major version (see
+    app.services.odoo_version) — every Odoo-side field name below is
+    resolved through app.odoo_mappings rather than hardcoded, so it can
+    differ per version once a real difference is confirmed and added there.
     """
     if synced_operation_type_ids is not None and not synced_operation_type_ids:
         return []
@@ -42,44 +52,60 @@ def fetch_open_orders(
     if synced_operation_type_ids is not None:
         domain.append(["picking_type_id", "in", sorted(synced_operation_type_ids)])
 
-    has_shipping_weight = client.has_field("stock.picking", "shipping_weight")
+    partner_f = resolve_required_field(_PICKING_MODEL, "partner_id", version_major)
+    state_f = resolve_required_field(_PICKING_MODEL, "state", version_major)
+    scheduled_date_f = resolve_required_field(_PICKING_MODEL, "scheduled_date", version_major)
+    picking_type_f = resolve_required_field(_PICKING_MODEL, "picking_type_id", version_major)
+    origin_f = resolve_required_field(_PICKING_MODEL, "origin", version_major)
+    weight_f = resolve_required_field(_PICKING_MODEL, "weight", version_major)
+    note_f = resolve_required_field(_PICKING_MODEL, "note", version_major)
+    shipping_weight_f = resolve_optional_field(
+        client, _PICKING_MODEL, "shipping_weight", version_major
+    )
+
     fields = [
         "id",
-        "partner_id",
-        "state",
-        "scheduled_date",
-        "picking_type_id",
-        "origin",
-        "weight",
-        "note",
+        partner_f,
+        state_f,
+        scheduled_date_f,
+        picking_type_f,
+        origin_f,
+        weight_f,
+        note_f,
     ]
-    if has_shipping_weight:
-        fields.append("shipping_weight")
+    if shipping_weight_f is not None:
+        fields.append(shipping_weight_f)
 
     picking_records = client.search_read(
-        "stock.picking", domain=domain, fields=fields, company_id=company_id
+        _PICKING_MODEL, domain=domain, fields=fields, company_id=company_id
     )
     if not picking_records:
         return []
 
     picking_ids = [rec["id"] for rec in picking_records]
     partner_ids = sorted(
-        {rel_id(rec.get("partner_id")) for rec in picking_records if rec.get("partner_id")}
+        {rel_id(rec.get(partner_f)) for rec in picking_records if rec.get(partner_f)}
     )
+
+    street_f = resolve_required_field(_PARTNER_MODEL, "street", version_major)
+    street2_f = resolve_required_field(_PARTNER_MODEL, "street2", version_major)
+    city_f = resolve_required_field(_PARTNER_MODEL, "city", version_major)
+    partner_state_f = resolve_required_field(_PARTNER_MODEL, "state_id", version_major)
+    country_f = resolve_required_field(_PARTNER_MODEL, "country_id", version_major)
+    zip_f = resolve_required_field(_PARTNER_MODEL, "zip", version_major)
 
     partner_by_id: dict[int, dict] = {}
     if partner_ids:
         partner_records = client.search_read(
-            "res.partner",
+            _PARTNER_MODEL,
             domain=[["id", "in", partner_ids]],
-            fields=["id", "street", "street2", "city", "state_id", "country_id", "zip"],
+            fields=["id", street_f, street2_f, city_f, partner_state_f, country_f, zip_f],
             company_id=company_id,
         )
         partner_by_id = {p["id"]: p for p in partner_records}
 
-    # TODO: confirm the real Odoo 19 model/field names for a picking's item
-    # lines — see SPEC.md "Odoo field mappings". stock.move is the most
-    # standard candidate; some setups may need stock.move.line instead.
+    # stock.move / items_summary isn't wired to the version-aware mapping
+    # registry yet — out of scope for this batch (see TODO.md).
     items_by_picking: dict[int, list[str]] = {}
     move_records = client.search_read(
         "stock.move",
@@ -97,10 +123,10 @@ def fetch_open_orders(
 
     orders: list[Order] = []
     for rec in picking_records:
-        partner_id = rel_id(rec.get("partner_id"))
+        partner_id = rel_id(rec.get(partner_f))
         partner = partner_by_id.get(partner_id) if partner_id is not None else None
 
-        picking_type_id = rel_id(rec.get("picking_type_id"))
+        picking_type_id = rel_id(rec.get(picking_type_f))
         warehouse_info = (
             (warehouse_by_picking_type or {}).get(picking_type_id, {})
             if picking_type_id is not None
@@ -110,30 +136,30 @@ def fetch_open_orders(
         orders.append(
             Order(
                 picking_id=rec["id"],
-                weight_kg=rec.get("weight") or 0.0,
+                weight_kg=rec.get(weight_f) or 0.0,
                 volume_m3=0.0,  # TODO: no native volume field confirmed yet
                 lat=0.0,  # TODO: source field not yet confirmed
                 lon=0.0,  # TODO: source field not yet confirmed
-                customer_name=rel_name(rec.get("partner_id")),
+                customer_name=rel_name(rec.get(partner_f)),
                 items_summary="; ".join(items_by_picking.get(rec["id"], [])),
                 address=Address(
-                    street=(partner or {}).get("street") or "",
-                    street2=(partner or {}).get("street2") or "",
-                    city=(partner or {}).get("city") or "",
-                    state_id=rel_id((partner or {}).get("state_id")),
-                    state_name=rel_name((partner or {}).get("state_id")),
-                    country_id=rel_id((partner or {}).get("country_id")),
-                    country_name=rel_name((partner or {}).get("country_id")),
-                    zip=(partner or {}).get("zip") or "",
+                    street=(partner or {}).get(street_f) or "",
+                    street2=(partner or {}).get(street2_f) or "",
+                    city=(partner or {}).get(city_f) or "",
+                    state_id=rel_id((partner or {}).get(partner_state_f)),
+                    state_name=rel_name((partner or {}).get(partner_state_f)),
+                    country_id=rel_id((partner or {}).get(country_f)),
+                    country_name=rel_name((partner or {}).get(country_f)),
+                    zip=(partner or {}).get(zip_f) or "",
                 ),
-                state=rec.get("state") or "",
-                scheduled_date=parse_odoo_datetime(rec.get("scheduled_date")),
+                state=rec.get(state_f) or "",
+                scheduled_date=parse_odoo_datetime(rec.get(scheduled_date_f)),
                 picking_type_id=picking_type_id,
                 warehouse_id=warehouse_info.get("warehouse_id"),
                 warehouse_name=warehouse_info.get("warehouse_name", ""),
-                origin=rec.get("origin") or "",
-                shipping_weight=(rec.get("shipping_weight") if has_shipping_weight else None),
-                note=rec.get("note") or "",
+                origin=rec.get(origin_f) or "",
+                shipping_weight=(rec.get(shipping_weight_f) if shipping_weight_f else None),
+                note=rec.get(note_f) or "",
             )
         )
     return orders
@@ -141,6 +167,8 @@ def fetch_open_orders(
 
 def fetch_vehicles(client: OdooClient, company_id: int | None = None) -> list[Vehicle]:
     # TODO: confirm real Odoo 19 field names — see SPEC.md "Odoo field mappings".
+    # No logical fields resolved through app.odoo_mappings yet since none of
+    # fleet.vehicle's capacity fields are confirmed — only "id" is fetched.
     records = client.search_read(
         "fleet.vehicle",
         domain=[],
@@ -203,6 +231,7 @@ def run_planning_sync(
     company_id: int | None = None,
     synced_operation_type_ids: set[int] | None = None,
     warehouse_by_picking_type: dict[int, dict] | None = None,
+    version_major: int | None = None,
 ) -> dict:
     """Runs the full pull -> FFD -> FILO pipeline. Returns a dict with
     `routes` / `unassigned_picking_ids` (matching `PlanningRunResult`, see
@@ -216,6 +245,7 @@ def run_planning_sync(
         company_id=company_id,
         synced_operation_type_ids=synced_operation_type_ids,
         warehouse_by_picking_type=warehouse_by_picking_type,
+        version_major=version_major,
     )
     vehicles = fetch_vehicles(client, company_id=company_id)
 

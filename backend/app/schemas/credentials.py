@@ -22,12 +22,21 @@ class OdooCredentialRead(BaseModel):
     username: str
     company_id: int | None = None
     company_name: str | None = None
+    server_version: str | None = None
+    server_version_major: int | None = None
+    server_serie: str | None = None
+    protocol_version: int | None = None
+    version_checked_at: datetime | None = None
+    version_change_detected: bool = False
     created_at: datetime
 
 
 class OdooCredentialTestResult(BaseModel):
     success: bool
     detail: str
+    server_version: str | None = None
+    server_version_major: int | None = None
+    version_change_detected: bool = False
 
 
 class OdooCompany(BaseModel):

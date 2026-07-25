@@ -15,65 +15,87 @@ from sqlalchemy.orm import Session
 from app.models.synced_operation_type import SyncedOperationType
 from app.models.synced_warehouse import SyncedWarehouse
 from app.services.odoo_client import OdooClient
+from app.services.odoo_field_resolution import resolve_required_field
 from app.services.odoo_relational import rel_id, rel_name
 
+_OPERATION_TYPE_MODEL = "stock.picking.type"
+_WAREHOUSE_MODEL = "stock.warehouse"
+_PARTNER_MODEL = "res.partner"
 
-def fetch_operation_types(client: OdooClient, company_id: int | None = None) -> list[dict]:
+
+def fetch_operation_types(
+    client: OdooClient, company_id: int | None = None, version_major: int | None = None
+) -> list[dict]:
+    name_f = resolve_required_field(_OPERATION_TYPE_MODEL, "name", version_major)
+    code_f = resolve_required_field(_OPERATION_TYPE_MODEL, "code", version_major)
+    warehouse_f = resolve_required_field(_OPERATION_TYPE_MODEL, "warehouse_id", version_major)
+
     records = client.search_read(
-        "stock.picking.type",
+        _OPERATION_TYPE_MODEL,
         domain=[],
-        fields=["id", "name", "code", "warehouse_id"],
+        fields=["id", name_f, code_f, warehouse_f],
         company_id=company_id,
     )
     return [
         {
             "odoo_operation_type_id": rec["id"],
-            "name": rec.get("name") or "",
-            "code": rec.get("code") or "",
-            "warehouse_id": rel_id(rec.get("warehouse_id")),
+            "name": rec.get(name_f) or "",
+            "code": rec.get(code_f) or "",
+            "warehouse_id": rel_id(rec.get(warehouse_f)),
         }
         for rec in records
     ]
 
 
-def fetch_warehouses(client: OdooClient, company_id: int | None = None) -> list[dict]:
+def fetch_warehouses(
+    client: OdooClient, company_id: int | None = None, version_major: int | None = None
+) -> list[dict]:
+    name_f = resolve_required_field(_WAREHOUSE_MODEL, "name", version_major)
+    code_f = resolve_required_field(_WAREHOUSE_MODEL, "code", version_major)
+    partner_f = resolve_required_field(_WAREHOUSE_MODEL, "partner_id", version_major)
+
     records = client.search_read(
-        "stock.warehouse",
+        _WAREHOUSE_MODEL,
         domain=[],
-        fields=["id", "name", "code", "partner_id"],
+        fields=["id", name_f, code_f, partner_f],
         company_id=company_id,
     )
 
-    partner_ids = sorted(
-        {rel_id(rec.get("partner_id")) for rec in records if rec.get("partner_id")}
-    )
+    street_f = resolve_required_field(_PARTNER_MODEL, "street", version_major)
+    street2_f = resolve_required_field(_PARTNER_MODEL, "street2", version_major)
+    city_f = resolve_required_field(_PARTNER_MODEL, "city", version_major)
+    state_f = resolve_required_field(_PARTNER_MODEL, "state_id", version_major)
+    country_f = resolve_required_field(_PARTNER_MODEL, "country_id", version_major)
+    zip_f = resolve_required_field(_PARTNER_MODEL, "zip", version_major)
+
+    partner_ids = sorted({rel_id(rec.get(partner_f)) for rec in records if rec.get(partner_f)})
     partner_by_id: dict[int, dict] = {}
     if partner_ids:
         partner_records = client.search_read(
-            "res.partner",
+            _PARTNER_MODEL,
             domain=[["id", "in", partner_ids]],
-            fields=["id", "street", "street2", "city", "state_id", "country_id", "zip"],
+            fields=["id", street_f, street2_f, city_f, state_f, country_f, zip_f],
             company_id=company_id,
         )
         partner_by_id = {p["id"]: p for p in partner_records}
 
     results = []
     for rec in records:
-        partner_id = rel_id(rec.get("partner_id"))
+        partner_id = rel_id(rec.get(partner_f))
         partner = partner_by_id.get(partner_id) if partner_id is not None else None
         results.append(
             {
                 "odoo_warehouse_id": rec["id"],
-                "name": rec.get("name") or "",
-                "code": rec.get("code") or "",
-                "street": (partner or {}).get("street") or "",
-                "street2": (partner or {}).get("street2") or "",
-                "city": (partner or {}).get("city") or "",
-                "state_id": rel_id((partner or {}).get("state_id")),
-                "state_name": rel_name((partner or {}).get("state_id")),
-                "country_id": rel_id((partner or {}).get("country_id")),
-                "country_name": rel_name((partner or {}).get("country_id")),
-                "zip": (partner or {}).get("zip") or "",
+                "name": rec.get(name_f) or "",
+                "code": rec.get(code_f) or "",
+                "street": (partner or {}).get(street_f) or "",
+                "street2": (partner or {}).get(street2_f) or "",
+                "city": (partner or {}).get(city_f) or "",
+                "state_id": rel_id((partner or {}).get(state_f)),
+                "state_name": rel_name((partner or {}).get(state_f)),
+                "country_id": rel_id((partner or {}).get(country_f)),
+                "country_name": rel_name((partner or {}).get(country_f)),
+                "zip": (partner or {}).get(zip_f) or "",
             }
         )
     return results

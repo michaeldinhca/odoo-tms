@@ -4,12 +4,20 @@ Never log `password`/api key values — only the url/db/username, which are not
 secret. See CLAUDE.md hard constraint #4.
 """
 
+import re
 import xmlrpc.client
 from typing import Any
 
 
 class OdooAuthError(Exception):
     pass
+
+
+def _parse_major_version(version_str: str) -> int | None:
+    """Extracts the leading integer from an Odoo version string. Handles
+    both on-prem style ("17.0") and Odoo Online/SaaS style ("saas~17.2")."""
+    match = re.search(r"\d+", version_str or "")
+    return int(match.group()) if match else None
 
 
 class OdooClient:
@@ -34,6 +42,27 @@ class OdooClient:
             raise OdooAuthError(f"Odoo authentication failed for db={self.db} user={self.username}")
         self._uid = uid
         return uid
+
+    def get_version_info(self) -> dict[str, Any]:
+        """Calls Odoo's public `common.version()` — no authentication
+        required, works before login. Used to detect which major version a
+        tenant's Odoo instance runs, since native field names/availability
+        can differ across versions (see app.odoo_mappings)."""
+        result = self._common().version()
+        server_version = str(result.get("server_version", ""))
+        server_serie = str(result.get("server_serie", server_version))
+        version_info = result.get("server_version_info")
+        if isinstance(version_info, (list, tuple)) and version_info:
+            major = int(version_info[0])
+        else:
+            major = _parse_major_version(server_serie or server_version)
+        protocol_version = result.get("protocol_version")
+        return {
+            "server_version": server_version,
+            "server_version_major": major,
+            "server_serie": server_serie,
+            "protocol_version": int(protocol_version) if protocol_version is not None else None,
+        }
 
     def test_connection(self) -> tuple[bool, str]:
         try:

@@ -28,6 +28,12 @@ changes.
 | encrypted_key  | text        | Fernet-encrypted Odoo API key — never plaintext   |
 | company_id     | integer, nullable | selected Odoo `res.company` id; NULL = all companies the API user can see, unfiltered (see DECISIONS.md "Multi-company") |
 | company_name   | text, nullable | cached display name of `company_id`, for the UI  |
+| server_version | text, nullable | raw version string from Odoo's `common.version()`, e.g. `"17.0"` |
+| server_version_major | integer, nullable | parsed major version, e.g. `17` — this is what `app.odoo_mappings.resolve_field` keys on |
+| server_serie   | text, nullable | e.g. `"17.0"`                                     |
+| protocol_version | integer, nullable |                                                 |
+| version_checked_at | timestamptz, nullable | last time `common.version()` was called for this connection |
+| version_change_detected | boolean | `True` if the most recent check found a different `server_version_major` than what was previously stored (see DECISIONS.md "Odoo version detection") |
 | created_at     | timestamptz |                                                    |
 
 One tenant may eventually have more than one Odoo connection (Phase 2,
@@ -36,6 +42,17 @@ one connection, an Odoo instance may have several companies — `company_id`
 picks which one planning runs are scoped to (via Odoo's own
 `allowed_company_ids` XML-RPC context key), rather than modeling companies as
 separate tenants.
+
+Version fields are populated/re-checked by `POST .../credentials/test`, not
+just once at setup — see DECISIONS.md "Odoo version detection". Confirmed
+live against the real Odoo instance (`edu-accounting-learning.odoo.com`):
+`common.version()` reports `server_version="19.0+e"` (Enterprise),
+`server_version_major=19`, `server_serie="19.0"` — matches the "Odoo 19"
+this whole project has been built and tested against so far. Also confirmed
+`version_change_detected` correctly flips `True` when the stored major
+version differs from a fresh check (simulated by directly setting a
+different stored value, then re-testing) and settles back to `False` on the
+next unchanged check.
 
 ### `users` (dispatcher/operator accounts)
 
@@ -291,7 +308,7 @@ address context needed to actually dispatch it, not just the picking ID.
 | POST   | `/tenants`                           | create tenant                                      | implemented |
 | GET    | `/tenants/{id}/credentials`          | get Odoo connection status (never returns key)     | implemented |
 | PUT    | `/tenants/{id}/credentials`          | set/update Odoo connection (Fernet-encrypts key)   | implemented |
-| POST   | `/tenants/{id}/credentials/test`     | test XML-RPC connection                            | implemented |
+| POST   | `/tenants/{id}/credentials/test`     | test XML-RPC connection; also (re-)detects and persists Odoo server version | implemented |
 | GET    | `/tenants/{id}/credentials/companies`| live-list the Odoo instance's `res.company` records | implemented |
 | PUT    | `/tenants/{id}/credentials/company`  | select (or clear) the company planning is scoped to | implemented |
 | GET    | `/tenants/{id}/operation-types`      | list synced operation types (local)                | implemented |
@@ -320,6 +337,57 @@ address context needed to actually dispatch it, not just the picking ID.
 | GET    | `/planning/results/{id}`             | fetch a planning run's result                      | implemented |
 
 No user self-registration/invite endpoint exists — see TODO.md.
+
+## Version-aware field mapping registry
+
+Tenants connect to Odoo instances that may run different major versions
+(13, 15, 16, 17, 18, 19, ...). `backend/app/odoo_mappings/` is a config-only
+package (no XML-RPC, no Odoo client) — one file per integrated model:
+`stock_picking.py`, `stock_warehouse.py`, `stock_picking_type.py`,
+`fleet_vehicle.py`, `hr_employee.py`, `res_partner.py`. Each defines:
+
+```python
+FIELD_MAP = {
+    "default": {
+        "logical_field_name": "odoo_field_name",
+        # ...
+    },
+    # a version block is added ONLY once a real difference is confirmed —
+    # never speculatively (see DECISIONS.md)
+    17: {
+        "logical_field_name": "different_odoo_field_name_on_v17",
+    },
+}
+```
+
+`resolve_field(model, logical_name, version_major)` (in
+`app/odoo_mappings/__init__.py`) checks the version-specific block first,
+falls back to `"default"` when the logical name isn't overridden there, and
+falls back to `"default"` entirely for any `version_major` with no block at
+all — including versions newer than any seen yet. As of this batch every
+version block across all six files is empty; every logical name currently
+resolves to the Odoo field name it always hardcoded to (see the confirmed
+mappings below) — this is a scaffold for future version-specific
+differences, not evidence any exist yet.
+
+For fields that may not exist at all on a given tenant's instance (e.g.
+`shipping_weight` without the `delivery` module), see
+`app.services.odoo_field_resolution.resolve_optional_field(client, model,
+logical_name, version_major)` — layers a live `fields_get()` existence
+check on top of `resolve_field`, returning `None` instead of a field name
+when absent. `resolve_required_field` is the plain-lookup counterpart for
+fields assumed always present.
+
+"Logical field name" here is *not* the same thing as this system's own
+local schema column names (e.g. `SyncedPicking.weight`) — it's an
+intermediate key used only for Odoo-side field resolution. The local schema
+(see the table definitions above) doesn't change based on Odoo version;
+only which Odoo field a given sync function reads from does.
+
+**Not yet wired to this registry** (see DECISIONS.md "Version-keyed field
+mapping..." scope note): `stock.move` (used for `items_summary`) and
+`res.company` (used for company selection) — both still use hardcoded field
+names directly.
 
 ## Odoo field mappings
 

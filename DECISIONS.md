@@ -203,3 +203,81 @@ today: whether any `driver.assigned_vehicle_id` points at it.
 **Why:** Blocking on a concept ("current assignments") that has no backing
 data would either be unimplementable or require inventing a table nobody
 asked for yet. Revisit once real trip/assignment tracking exists.
+
+---
+
+## 2026-07-25 — Odoo version detection: re-checked on every test-connection, changes flagged not silently overwritten
+
+**Decision:** `POST .../credentials/test` calls Odoo's public
+`common.version()` (no auth required) every time it runs — not just once at
+setup — and persists `server_version`/`server_version_major`/
+`server_serie`/`protocol_version` on the tenant's `tenant_odoo_credentials`
+row. If the newly-detected `server_version_major` differs from what was
+already stored (and something was already stored — the very first check
+never "changes" anything), `version_change_detected` is set `True` and a
+warning is logged server-side. The value is simply overwritten with the new
+version either way; nothing blocks the credential from being used. The
+frontend shows the detected version and a warning banner when
+`version_change_detected` is true.
+
+**Why:** A tenant's Odoo instance can be upgraded after the connection was
+first configured, and field mappings (see the next entry) are keyed on
+major version — silently trusting a stale cached version number risks
+resolving field names for the wrong version. Re-checking on every test
+keeps this cheap (one extra unauthenticated XML-RPC call) and gives the
+dispatcher a visible signal ("this changed, some things might need a
+second look") instead of either erroring outright or masking the change.
+
+---
+
+## 2026-07-25 — Version-keyed field mapping registry with a default fallback, not per-version duplication
+
+**Decision:** `app/odoo_mappings/` holds one file per integrated Odoo model
+(`stock_picking.py`, `stock_warehouse.py`, `stock_picking_type.py`,
+`fleet_vehicle.py`, `hr_employee.py`, `res_partner.py`), each a `FIELD_MAP`
+dict shaped `{"default": {...}, <major_version>: {...only entries that
+differ...}}`. `resolve_field(model, logical_name, version_major)` checks
+the version-specific block first, falls back to `"default"` if the logical
+name isn't overridden there, and falls back to `"default"` entirely for any
+`version_major` with no block at all (including versions newer than
+anything seen yet). As of this batch, **every** version block is empty —
+no Odoo field-name difference has actually been confirmed against a real
+instance of a specific version, so none is guessed at. A version block gets
+added only once a real difference is verified against an actual Odoo
+instance running that version — never speculatively (the task that
+commissioned this batch was explicit about this, and it matches the
+project's general stance against guessing at unverified Odoo behavior).
+
+**Why default-fallback instead of a full field list duplicated per
+version:** Odoo's field names are overwhelmingly stable release to release
+— duplicating the full set for every supported major version would mean
+one typo silently breaks a specific version's sync with no signal, and
+every unrelated field addition would require touching N version blocks
+instead of one default entry. A sparse override list means the *diff* from
+default is the only thing that has to be correct, and an empty version
+block (the common case) costs nothing.
+
+**Scope note:** `stock.move` (used for `items_summary`) and `res.company`
+(used for company selection) are deliberately **not** in the mapping
+registry this batch — the task's file list and "wire existing sync code"
+list both named six specific models and didn't include these two. Left as
+directly-hardcoded field names for now; see TODO.md.
+
+---
+
+## 2026-07-25 — Graceful field-degradation consolidated into one bridge function
+
+**Decision:** `app.services.odoo_field_resolution` has exactly two
+functions: `resolve_required_field` (pure mapping lookup, no Odoo call —
+for fields assumed always present) and `resolve_optional_field` (mapping
+lookup + a live `fields_get()` existence check, returning `None` instead of
+a field name when absent). The previous ad-hoc pattern — inline
+`client.has_field("stock.picking", "shipping_weight")` only at that one
+call site — is now this one reusable function, and any future
+optional-field case (a new module-gated field on any of the six mapped
+models) should go through it rather than growing its own inline check.
+
+**Why:** Consolidating means there's one place that knows "how do we handle
+a field that might not exist" — easier to get right once, easier to find
+when auditing which fields degrade gracefully vs. which are assumed
+present.

@@ -84,7 +84,9 @@ def list_odoo_employees(
 
     client = build_client(credential)
     try:
-        available, employees = fetch_employees(client, company_id=credential.company_id)
+        available, employees = fetch_employees(
+            client, company_id=credential.company_id, version_major=credential.server_version_major
+        )
     except ODOO_ERRORS as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

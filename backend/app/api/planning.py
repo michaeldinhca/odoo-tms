@@ -70,6 +70,7 @@ def run_planning(
             company_id=credential.company_id,
             synced_operation_type_ids=synced_operation_type_ids,
             warehouse_by_picking_type=warehouse_by_picking_type,
+            version_major=credential.server_version_major,
         )
     except ODOO_ERRORS as exc:
         run.status = "failed"

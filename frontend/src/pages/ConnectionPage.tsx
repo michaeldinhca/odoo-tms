@@ -64,6 +64,11 @@ export default function ConnectionPage() {
     try {
       const result = await testCredential(tenantId!);
       setTestResult(result);
+      if (result.success) {
+        // test_credential persists the freshly-detected version server-side;
+        // re-fetch so the displayed version/warning reflect this check.
+        setExisting(await getCredential(tenantId!));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to test connection");
     }
@@ -106,6 +111,18 @@ export default function ConnectionPage() {
         <p className="hint">
           Connected to <strong>{existing.url}</strong> (db: {existing.db}) as{" "}
           {existing.username}
+        </p>
+      )}
+      {existing?.server_version && (
+        <p className="hint">
+          Connected — Odoo {existing.server_version}
+          {existing.version_change_detected && (
+            <span className="error">
+              {" "}
+              ⚠ Odoo's major version changed since the last check — field mappings may need
+              re-verifying (see SPEC.md's Odoo field mappings).
+            </span>
+          )}
         </p>
       )}
       <form onSubmit={handleSave}>
