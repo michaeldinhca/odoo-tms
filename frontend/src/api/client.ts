@@ -1,4 +1,5 @@
 import type {
+  OdooCompany,
   OdooCredential,
   OdooCredentialTestResult,
   OdooCredentialUpsert,
@@ -90,6 +91,21 @@ export function upsertCredential(
 export function testCredential(tenantId: string): Promise<OdooCredentialTestResult> {
   return request<OdooCredentialTestResult>(`/tenants/${tenantId}/credentials/test`, {
     method: "POST",
+  });
+}
+
+export function listCompanies(tenantId: string): Promise<OdooCompany[]> {
+  return request<OdooCompany[]>(`/tenants/${tenantId}/credentials/companies`);
+}
+
+export function selectCompany(
+  tenantId: string,
+  companyId: number | null,
+  companyName: string | null,
+): Promise<OdooCredential> {
+  return request<OdooCredential>(`/tenants/${tenantId}/credentials/company`, {
+    method: "PUT",
+    body: JSON.stringify({ company_id: companyId, company_name: companyName }),
   });
 }
 

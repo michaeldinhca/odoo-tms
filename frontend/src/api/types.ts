@@ -8,6 +8,8 @@ export interface OdooCredential {
   url: string;
   db: string;
   username: string;
+  company_id: number | null;
+  company_name: string | null;
   created_at: string;
 }
 
@@ -23,9 +25,25 @@ export interface OdooCredentialTestResult {
   detail: string;
 }
 
+export interface OdooCompany {
+  id: number;
+  name: string;
+}
+
+export interface Address {
+  street1: string;
+  street2: string;
+  city: string;
+  country: string;
+  zip: string;
+}
+
 export interface RouteStop {
   stop_order: number;
   picking_id: number;
+  customer_name: string;
+  items_summary: string;
+  address: Address;
   eta: string | null;
 }
 

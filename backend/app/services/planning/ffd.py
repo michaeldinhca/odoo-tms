@@ -2,12 +2,24 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class Address:
+    street1: str = ""
+    street2: str = ""
+    city: str = ""
+    country: str = ""
+    zip: str = ""
+
+
+@dataclass
 class Order:
     picking_id: int
     weight_kg: float
     volume_m3: float
     lat: float
     lon: float
+    customer_name: str = ""
+    items_summary: str = ""
+    address: Address = field(default_factory=Address)
 
 
 @dataclass

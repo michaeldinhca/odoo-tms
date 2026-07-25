@@ -43,3 +43,9 @@ Single Docker Compose stack on one Hetzner VPS.
   consumes it and writes the result back to Postgres).
 - All Odoo connections are outbound-only XML-RPC calls initiated by the
   backend; no customer Odoo instance ever calls into this system.
+- A planning run makes several XML-RPC reads against the tenant's Odoo, not
+  just one: `stock.picking` (open orders), `res.partner` (customer/address,
+  looked up from the pickings' `partner_id`s), `stock.move` (item summary),
+  and `fleet.vehicle`. When the tenant has a company selected (see
+  DECISIONS.md "Multi-company"), every one of these calls passes Odoo's
+  `allowed_company_ids` context key to scope results to that company.

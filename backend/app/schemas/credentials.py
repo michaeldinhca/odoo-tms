@@ -20,9 +20,24 @@ class OdooCredentialRead(BaseModel):
     url: str
     db: str
     username: str
+    company_id: int | None = None
+    company_name: str | None = None
     created_at: datetime
 
 
 class OdooCredentialTestResult(BaseModel):
     success: bool
     detail: str
+
+
+class OdooCompany(BaseModel):
+    id: int
+    name: str
+
+
+class OdooCredentialCompanySelect(BaseModel):
+    """`company_id`/`company_name` both None clears the selection (plan
+    across all companies the API user can see, unfiltered)."""
+
+    company_id: int | None
+    company_name: str | None

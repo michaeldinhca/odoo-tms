@@ -49,8 +49,14 @@ class OdooClient:
         model: str,
         domain: list | None = None,
         fields: list[str] | None = None,
+        company_id: int | None = None,
     ) -> list[dict[str, Any]]:
         uid = self.authenticate()
+        options: dict[str, Any] = {"fields": fields or []}
+        if company_id is not None:
+            # Odoo's own multi-company scoping mechanism — restricts the
+            # search to records visible under this company.
+            options["context"] = {"allowed_company_ids": [company_id]}
         return self._object().execute_kw(
             self.db,
             uid,
@@ -58,5 +64,8 @@ class OdooClient:
             model,
             "search_read",
             [domain or []],
-            {"fields": fields or []},
+            options,
         )
+
+    def list_companies(self) -> list[dict[str, Any]]:
+        return self.search_read("res.company", domain=[], fields=["id", "name"])

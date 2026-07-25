@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_current_user, get_db
-from app.core.crypto import decrypt_secret
 from app.models.odoo_credential import TenantOdooCredential
 from app.models.planning_run import PlanningRun
 from app.schemas.planning import PlanningRunRequest, PlanningRunResult
-from app.services.odoo_client import OdooAuthError, OdooClient
+from app.services.odoo_client import OdooAuthError
+from app.services.odoo_connection import build_client
 from app.services.planning.runner import run_planning_sync
 
 # Anything raised while talking to a customer's Odoo instance — bad
@@ -58,15 +58,10 @@ def run_planning(
     db.commit()
     db.refresh(run)
 
-    client = OdooClient(
-        url=credential.url,
-        db=credential.db,
-        username=credential.username,
-        api_key=decrypt_secret(credential.encrypted_key),
-    )
+    client = build_client(credential)
 
     try:
-        result = run_planning_sync(client)
+        result = run_planning_sync(client, company_id=credential.company_id)
     except ODOO_ERRORS as exc:
         run.status = "failed"
         run.result_json = {"error": str(exc)}

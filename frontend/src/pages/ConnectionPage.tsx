@@ -1,6 +1,13 @@
 import { type FormEvent, useEffect, useState } from "react";
-import { getCredential, getTenantId, testCredential, upsertCredential } from "../api/client";
-import type { OdooCredential, OdooCredentialTestResult } from "../api/types";
+import {
+  getCredential,
+  getTenantId,
+  listCompanies,
+  selectCompany,
+  testCredential,
+  upsertCredential,
+} from "../api/client";
+import type { OdooCompany, OdooCredential, OdooCredentialTestResult } from "../api/types";
 
 export default function ConnectionPage() {
   const tenantId = getTenantId();
@@ -12,6 +19,12 @@ export default function ConnectionPage() {
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<OdooCredentialTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [companies, setCompanies] = useState<OdooCompany[] | null>(null);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [companyError, setCompanyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -53,6 +66,36 @@ export default function ConnectionPage() {
       setTestResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to test connection");
+    }
+  }
+
+  async function handleLoadCompanies() {
+    setCompanyError(null);
+    setLoadingCompanies(true);
+    try {
+      const list = await listCompanies(tenantId!);
+      setCompanies(list);
+      setSelectedCompanyId(existing?.company_id != null ? String(existing.company_id) : "");
+    } catch (err) {
+      setCompanyError(err instanceof Error ? err.message : "Failed to load companies");
+    } finally {
+      setLoadingCompanies(false);
+    }
+  }
+
+  async function handleSaveCompany() {
+    setCompanyError(null);
+    setSavingCompany(true);
+    try {
+      const companyId = selectedCompanyId === "" ? null : Number(selectedCompanyId);
+      const companyName =
+        companyId === null ? null : (companies?.find((c) => c.id === companyId)?.name ?? null);
+      const updated = await selectCompany(tenantId!, companyId, companyName);
+      setExisting(updated);
+    } catch (err) {
+      setCompanyError(err instanceof Error ? err.message : "Failed to save company selection");
+    } finally {
+      setSavingCompany(false);
     }
   }
 
@@ -114,6 +157,43 @@ export default function ConnectionPage() {
       </form>
       {testResult && (
         <p className={testResult.success ? "success" : "error"}>{testResult.detail}</p>
+      )}
+
+      {existing && (
+        <div className="company-section">
+          <h2>Company</h2>
+          <p className="hint">
+            An Odoo instance can have several companies. Planning runs are scoped to the
+            company selected here.
+          </p>
+          <p>
+            Currently scoped to: <strong>{existing.company_name ?? "All companies"}</strong>
+          </p>
+          <div className="actions">
+            <button type="button" onClick={handleLoadCompanies} disabled={loadingCompanies}>
+              {loadingCompanies ? "Loading..." : "Load companies from Odoo"}
+            </button>
+          </div>
+          {companies && (
+            <div className="actions company-select-row">
+              <select
+                value={selectedCompanyId}
+                onChange={(e) => setSelectedCompanyId(e.target.value)}
+              >
+                <option value="">All companies</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={handleSaveCompany} disabled={savingCompany}>
+                {savingCompany ? "Saving..." : "Save company"}
+              </button>
+            </div>
+          )}
+          {companyError && <p className="error">{companyError}</p>}
+        </div>
       )}
     </div>
   );

@@ -20,13 +20,23 @@ gets done.
 - [x] Dev seed script (`app/seed.py`) — MVP has no self-registration/invite
       endpoint (not in SPEC.md's endpoint list), so this is the only way to
       get a first tenant + login user
+- [x] Multi-company support: `company_id`/`company_name` on the Odoo
+      credential, `GET .../credentials/companies` + `PUT .../credentials/company`,
+      `allowed_company_ids` context threaded through every XML-RPC read (see
+      DECISIONS.md)
+- [x] Planning results carry customer name, items summary, and a broken-down
+      address (street1/street2/city/country/zip) per stop — pulled from
+      `res.partner` + `stock.move`, not just the bare picking ID
 
 ## Frontend
 
 - [x] Tenant login page
+- [x] Password show/hide toggle on login
 - [x] Add/edit Odoo connection form
+- [x] Company selector (load companies from Odoo, pick one or "All companies")
 - [x] "Run Planning" button + trigger flow
-- [x] Results view: vehicle assignments + delivery sequence (functional, not styled)
+- [x] Results view: vehicle assignments + delivery sequence, including
+      customer/items/address per stop (functional, not styled)
 
 ## Infra
 
@@ -38,15 +48,24 @@ gets done.
 - [x] Full stack verified locally end-to-end: `docker compose up` → migration
       runs → login → save/test Odoo credential (never leaks key) → run
       planning (fails gracefully with a real error, not a 500) → fetch result
+- [x] Verified against a real, multi-company Odoo 19 instance the user
+      provided (`edu-accounting-learning.odoo.com`): company listing (9
+      companies), company-scoped planning run (29 pickings vs. 37 unscoped —
+      confirms `allowed_company_ids` filtering actually works), and
+      customer/items/address enrichment all came back correctly, including
+      multi-line item summaries like `"[FURN_8888] Office Lamp x5"`
 
 ## Next up
 
-- [ ] Real Odoo 19 instance to confirm field mappings (see "Open questions"
-      below) — `runner.py`'s `fetch_open_orders`/`fetch_vehicles` currently
-      return zeroed weight/volume/lat/lon placeholders
+- [ ] Real Odoo 19 instance with weight/volume/lat-lon data to confirm those
+      field mappings (see "Open questions" below) — still placeholder zeros
 - [ ] User invite/registration flow (currently seed-script only)
 - [ ] Depot location modeling — route distance currently sums stop-to-stop
       legs only, no depot-to-first-stop leg (see SPEC.md)
+- [ ] ETA computation — `RouteStop.eta` is always null; needs a depot start
+      time + per-stop service time model
+- [ ] Per-run company override or multi-company planning in one run — current
+      design is one persisted default company per tenant (see DECISIONS.md)
 
 ## Open questions (need confirmation before implementing)
 
