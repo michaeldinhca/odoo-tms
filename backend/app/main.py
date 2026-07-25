@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, credentials, planning, tenants
+from app.api import auth, credentials, operation_types, planning, tenants, warehouses
 from app.core.config import settings
 
 app = FastAPI(title="odoo-tms API")
@@ -17,6 +17,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(tenants.router)
 app.include_router(credentials.router)
+app.include_router(operation_types.router)
+app.include_router(warehouses.router)
 app.include_router(planning.router)
 
 

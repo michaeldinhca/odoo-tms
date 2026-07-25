@@ -4,10 +4,10 @@ import type { Address, PlanningRunResult } from "../api/types";
 
 function formatAddress(address: Address): string {
   const parts = [
-    [address.street1, address.street2].filter(Boolean).join(", "),
+    [address.street, address.street2].filter(Boolean).join(", "),
     address.city,
     address.zip,
-    address.country,
+    address.country_name,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(", ") : "—";
 }
@@ -65,9 +65,13 @@ export default function PlanningPage() {
                 <tr>
                   <th>Stop</th>
                   <th>Picking ID</th>
+                  <th>Status</th>
                   <th>Customer</th>
                   <th>Items</th>
                   <th>Address</th>
+                  <th>Scheduled</th>
+                  <th>Source Doc</th>
+                  <th>Warehouse</th>
                   <th>ETA</th>
                 </tr>
               </thead>
@@ -76,9 +80,13 @@ export default function PlanningPage() {
                   <tr key={stop.picking_id}>
                     <td>{stop.stop_order}</td>
                     <td>{stop.picking_id}</td>
+                    <td>{stop.state || "—"}</td>
                     <td>{stop.customer_name || "—"}</td>
                     <td>{stop.items_summary || "—"}</td>
                     <td>{formatAddress(stop.address)}</td>
+                    <td>{stop.scheduled_date ?? "—"}</td>
+                    <td>{stop.origin || "—"}</td>
+                    <td>{stop.warehouse_name || "—"}</td>
                     <td>{stop.eta ?? "—"}</td>
                   </tr>
                 ))}

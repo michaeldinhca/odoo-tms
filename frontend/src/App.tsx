@@ -3,7 +3,9 @@ import NavBar from "./components/NavBar";
 import RequireAuth from "./components/RequireAuth";
 import ConnectionPage from "./pages/ConnectionPage";
 import LoginPage from "./pages/LoginPage";
+import OperationTypesPage from "./pages/OperationTypesPage";
 import PlanningPage from "./pages/PlanningPage";
+import WarehousesPage from "./pages/WarehousesPage";
 
 export default function App() {
   return (
@@ -16,6 +18,22 @@ export default function App() {
           element={
             <RequireAuth>
               <ConnectionPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/operation-types"
+          element={
+            <RequireAuth>
+              <OperationTypesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/warehouses"
+          element={
+            <RequireAuth>
+              <WarehousesPage />
             </RequireAuth>
           }
         />

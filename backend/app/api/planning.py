@@ -11,7 +11,9 @@ from app.models.planning_run import PlanningRun
 from app.schemas.planning import PlanningRunRequest, PlanningRunResult
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
+from app.services.picking_sync import upsert_synced_pickings
 from app.services.planning.runner import run_planning_sync
+from app.services.sync_config import get_synced_operation_type_ids, get_warehouse_by_picking_type
 
 # Anything raised while talking to a customer's Odoo instance — bad
 # credentials, DNS/network failures, malformed XML-RPC responses — is an
@@ -59,9 +61,16 @@ def run_planning(
     db.refresh(run)
 
     client = build_client(credential)
+    synced_operation_type_ids = get_synced_operation_type_ids(db, payload.tenant_id)
+    warehouse_by_picking_type = get_warehouse_by_picking_type(db, payload.tenant_id)
 
     try:
-        result = run_planning_sync(client, company_id=credential.company_id)
+        result = run_planning_sync(
+            client,
+            company_id=credential.company_id,
+            synced_operation_type_ids=synced_operation_type_ids,
+            warehouse_by_picking_type=warehouse_by_picking_type,
+        )
     except ODOO_ERRORS as exc:
         run.status = "failed"
         run.result_json = {"error": str(exc)}
@@ -71,6 +80,9 @@ def run_planning(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not complete planning run against Odoo: {exc}",
         ) from exc
+
+    orders = result.pop("orders", [])
+    upsert_synced_pickings(db, payload.tenant_id, orders)
 
     run.status = "done"
     run.result_json = result

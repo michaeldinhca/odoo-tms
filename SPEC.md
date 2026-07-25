@@ -58,31 +58,138 @@ separate tenants.
 | created_at    | timestamptz |                                                 |
 | completed_at  | timestamptz | nullable                                       |
 
+### `synced_operation_types`
+
+Mirrors a tenant's Odoo `stock.picking.type` records (Receipts, Delivery
+Orders, Manufacturing, PoS Orders, Resupply Subcontractor, Repairs, ...).
+Populated by `POST /tenants/{id}/operation-types/refresh`; only rows with
+`is_synced=true` are pulled by the stock.picking sync (see "Operation
+type / warehouse sync gating" in DECISIONS.md).
+
+| column                  | type              | notes                                        |
+|--------------------------|-------------------|-------------------------------------------------|
+| id                       | UUID (PK)         |                                                   |
+| tenant_id                | UUID (FK)         | references `tenants.id`                          |
+| odoo_operation_type_id   | integer           | Odoo's `stock.picking.type.id`                   |
+| name                     | text              |                                                   |
+| code                     | text              | `incoming` / `outgoing` / `internal` / `mrp_operation` / ... |
+| warehouse_id             | integer, nullable | Odoo warehouse id this operation type belongs to |
+| is_synced                | boolean           | default `false`; refresh never resets this on existing rows |
+| last_seen_at             | timestamptz, nullable |                                               |
+| created_at               | timestamptz       |                                                   |
+| updated_at                | timestamptz       |                                                   |
+
+Unique on `(tenant_id, odoo_operation_type_id)`.
+
+### `synced_warehouses`
+
+Mirrors a tenant's Odoo `stock.warehouse` records, address split the same
+way as everywhere else in this system (see "Address" shape below — not a
+second, inconsistent structure). Populated by `POST
+/tenants/{id}/warehouses/refresh`.
+
+| column         | type              | notes                                    |
+|-----------------|-------------------|---------------------------------------------|
+| id              | UUID (PK)         |                                               |
+| tenant_id       | UUID (FK)         | references `tenants.id`                      |
+| odoo_warehouse_id | integer         | Odoo's `stock.warehouse.id`                  |
+| name            | text              |                                               |
+| code            | text              | Odoo's warehouse short code                  |
+| street          | text              | from the warehouse's `partner_id`            |
+| street2         | text              |                                               |
+| city            | text              |                                               |
+| state_id        | integer, nullable |                                               |
+| state_name      | text              | cached display name (see DECISIONS.md)       |
+| country_id      | integer, nullable |                                               |
+| country_name    | text              | cached display name (see DECISIONS.md)       |
+| zip             | text              |                                               |
+| is_synced       | boolean           | default `false`; refresh never resets this on existing rows |
+| last_seen_at    | timestamptz, nullable |                                           |
+| created_at      | timestamptz       |                                               |
+| updated_at      | timestamptz       |                                               |
+
+Unique on `(tenant_id, odoo_warehouse_id)`.
+
+### `synced_pickings`
+
+Local mirror of a tenant's synced `stock.picking` records — only ones whose
+operation type is marked `is_synced` get pulled/stored. Upserted as a side
+effect of `/planning/run` (see DECISIONS.md "`synced_pickings` populated as
+a side effect of `/planning/run`") — every fetched picking is stored here
+regardless of whether FFD assigned it to a vehicle.
+
+| column           | type              | notes                                       |
+|-------------------|-------------------|--------------------------------------------|
+| id                | UUID (PK)         |                                              |
+| tenant_id         | UUID (FK)         | references `tenants.id`                     |
+| odoo_picking_id   | integer           | Odoo's `stock.picking.id`                   |
+| state             | text              | Odoo's native state: draft/waiting/confirmed/assigned/done/cancel |
+| customer_name     | text              |                                              |
+| items_summary     | text              |                                              |
+| street / street2 / city / state_id / state_name / country_id / country_name / zip | — | same split-address shape as `synced_warehouses` |
+| scheduled_date    | timestamptz, nullable |                                          |
+| picking_type_id   | integer, nullable | Odoo's `stock.picking.picking_type_id`      |
+| warehouse_id      | integer, nullable | resolved via `synced_operation_types.warehouse_id` |
+| warehouse_name    | text              | resolved via `synced_warehouses`            |
+| origin            | text              | Odoo's `origin` (Source Document, usually the Sales Order ref) |
+| weight            | float, nullable   | Odoo's native `weight` field                |
+| shipping_weight   | float, nullable   | Odoo's `shipping_weight` — only exists when the `delivery` module is installed; `null` otherwise, never errors |
+| note              | text              |                                              |
+| last_seen_at      | timestamptz, nullable |                                          |
+| created_at        | timestamptz       |                                              |
+| updated_at        | timestamptz       |                                              |
+
+Unique on `(tenant_id, odoo_picking_id)`.
+
 ## Core planning flow — data shapes
+
+### Address (shared shape)
+
+Used for both a picking's delivery address and a warehouse's address — one
+consistent structure, not two (see DECISIONS.md). Always split, never a
+concatenated string; display code composes a display string at render time.
+
+```jsonc
+{
+  "street": "",
+  "street2": "",
+  "city": "",
+  "state_id": null,       // Odoo res.country.state id, or null
+  "state_name": "",       // cached display name, resolved at sync time
+  "country_id": null,     // Odoo res.country id, or null
+  "country_name": "",     // cached display name, resolved at sync time
+  "zip": ""
+}
+```
 
 ### Input: order / `stock.picking` (pulled from tenant's Odoo)
 
 This is `app.services.planning.ffd.Order` — implemented, not just planned.
-Customer name, items summary, and address are populated from real Odoo
-queries (`res.partner`, `stock.move`); weight/volume/lat/lon are still
-placeholder zeros pending field confirmation (see "Odoo field mappings").
+Customer name, items summary, address, state, scheduled date, operation
+type/warehouse, origin, weight, and note are all populated from real Odoo
+queries (`res.partner`, `stock.move`, `stock.picking` itself); volume/lat/lon
+are still placeholder zeros pending field confirmation (see "Odoo field
+mappings"). Only pickings whose operation type is marked synced are fetched
+at all — see "Operation type / warehouse sync gating" in DECISIONS.md.
 
 ```jsonc
 {
   "picking_id": 0,            // stock.picking.id
   "customer_name": "",        // stock.picking.partner_id's display name
   "items_summary": "",        // joined "<product> x<qty>" from stock.move, e.g. "Widget x2; Gadget x1"
-  "address": {                // from res.partner, looked up via stock.picking.partner_id
-    "street1": "",
-    "street2": "",
-    "city": "",
-    "country": "",
-    "zip": ""
-  },
-  "weight_kg": 0.0,            // TODO: stock.picking / move line weight field — still a placeholder
+  "address": { /* see Address shape above, from res.partner via partner_id */ },
+  "state": "",                 // stock.picking.state (native: draft/waiting/confirmed/assigned/done/cancel)
+  "scheduled_date": null,      // stock.picking.scheduled_date
+  "picking_type_id": null,     // stock.picking.picking_type_id
+  "warehouse_id": null,        // resolved via synced_operation_types -> synced_warehouses
+  "warehouse_name": "",
+  "origin": "",                 // stock.picking.origin (Source Document)
+  "weight_kg": 0.0,            // stock.picking.weight
   "volume_m3": 0.0,            // TODO: placeholder, may not exist on stock.picking directly
   "lat": 0.0,                  // TODO: source field — partner geo or custom field
-  "lon": 0.0
+  "lon": 0.0,
+  "shipping_weight": null,      // stock.picking.shipping_weight — null if the `delivery` module isn't installed
+  "note": ""                    // stock.picking.note
 }
 ```
 
@@ -113,7 +220,11 @@ address context needed to actually dispatch it, not just the picking ID.
       "picking_id": 0,
       "customer_name": "",
       "items_summary": "",
-      "address": { "street1": "", "street2": "", "city": "", "country": "", "zip": "" },
+      "address": { /* see Address shape above */ },
+      "state": "",
+      "scheduled_date": null,
+      "origin": "",
+      "warehouse_name": "",
       "eta": null            // not computed yet — TODO, needs a depot start time + per-stop service time
     }
     // last-loaded picking appears first in sequence (FILO)
@@ -135,6 +246,12 @@ address context needed to actually dispatch it, not just the picking ID.
 | POST   | `/tenants/{id}/credentials/test`     | test XML-RPC connection                            | implemented |
 | GET    | `/tenants/{id}/credentials/companies`| live-list the Odoo instance's `res.company` records | implemented |
 | PUT    | `/tenants/{id}/credentials/company`  | select (or clear) the company planning is scoped to | implemented |
+| GET    | `/tenants/{id}/operation-types`      | list synced operation types (local)                | implemented |
+| POST   | `/tenants/{id}/operation-types/refresh` | pull `stock.picking.type` from Odoo, upsert (preserves existing `is_synced`) | implemented |
+| PUT    | `/tenants/{id}/operation-types/{row_id}/sync` | toggle `is_synced` for one operation type    | implemented |
+| GET    | `/tenants/{id}/warehouses`           | list synced warehouses (local)                     | implemented |
+| POST   | `/tenants/{id}/warehouses/refresh`   | pull `stock.warehouse` from Odoo, upsert (preserves existing `is_synced`) | implemented |
+| PUT    | `/tenants/{id}/warehouses/{row_id}/sync` | toggle `is_synced` for one warehouse            | implemented |
 | POST   | `/planning/run`                      | trigger a planning run for a tenant                | implemented |
 | GET    | `/planning/results/{id}`             | fetch a planning run's result                      | implemented |
 
@@ -153,6 +270,18 @@ scoping both confirmed — company-scoped run returned 29 pickings vs. 37
 unscoped), and `stock.move` (item summaries like `"[FURN_8888] Office Lamp
 x5"` came through correctly, including multi-line pickings).
 
+Re-verified against the same instance for this batch's additions:
+`stock.picking.type` (86 operation types across 9 warehouses, real `code`
+values including one not originally anticipated — `repair_operation`),
+`stock.warehouse` + its address, operation-type-gated picking sync (toggling
+one operation type + warehouse on and running planning correctly narrowed
+results to just that operation type's pickings), warehouse resolution via
+the operation-type join, and `stock.picking`'s `state`/`scheduled_date`/
+`origin`/`weight`/`shipping_weight`/`note` — including confirming this
+instance has the `delivery` module installed (`shipping_weight` present and
+populated; the absent-field fallback path is unit-tested only, since this is
+the one real instance available and it has the module).
+
 ### `stock.picking`
 
 | our field          | odoo field                                              | status                        |
@@ -160,20 +289,26 @@ x5"` came through correctly, including multi-line pickings).
 | customer_name       | `partner_id` (display name half of the m2o tuple)         | confirmed against real instance |
 | delivery_address    | via `res.partner` lookup on `partner_id` (see below)       | confirmed against real instance |
 | items_summary        | via `stock.move` lookup on `picking_id`, joining `product_id` + `product_uom_qty` | confirmed against real instance |
-| weight_kg           | ?                                                          | TODO: confirm (move lines?)   |
+| state                | `state`                                                    | confirmed against real instance |
+| scheduled_date       | `scheduled_date`                                           | confirmed against real instance |
+| picking_type_id      | `picking_type_id`                                          | confirmed against real instance |
+| origin                | `origin`                                                   | confirmed against real instance (also confirmed empty-string when unset, not an error) |
+| weight_kg            | `weight`                                                    | confirmed against real instance — real nonzero values (e.g. 59.4, 16.5) |
+| shipping_weight       | `shipping_weight` — only present when the `delivery` module is installed; code checks via `fields_get` and stores `null` when absent, never errors | confirmed against real instance — this instance has the `delivery` module installed, field present and populated; the absent-field path is covered by a unit test (no real instance without `delivery` available to verify against) |
+| note                  | `note`                                                     | confirmed field exists and is queried correctly; empty on every picking in the test dataset, so real note content unverified |
 | volume_m3           | ?                                                          | TODO: confirm                 |
 | lat / lon           | `partner_id`'s geo fields or a custom field                | TODO: confirm                 |
-| time_window          | `scheduled_date` +/- ?                                     | TODO: confirm — not modeled yet |
 
-### `res.partner` (for `address`)
+### `res.partner` (for `address` — shared shape, see "Address" above)
 
-| our field   | odoo field    | status                          |
-|-------------|---------------|-----------------------------------|
-| street1     | `street`      | confirmed against real instance   |
-| street2     | `street2`     | confirmed against real instance   |
-| city        | `city`        | confirmed against real instance   |
-| zip         | `zip`         | confirmed against real instance   |
-| country     | `country_id` (display name half of the m2o tuple) | confirmed against real instance |
+| our field    | odoo field    | status                          |
+|--------------|---------------|-----------------------------------|
+| street       | `street`      | confirmed against real instance (was named `street1` before this batch) |
+| street2      | `street2`     | confirmed against real instance   |
+| city         | `city`        | confirmed against real instance   |
+| state_id/state_name | `state_id` (id + display name half of the m2o tuple) | confirmed against real instance (e.g. id 541 "Ontario (CA)") |
+| country_id/country_name | `country_id` (id + display name half of the m2o tuple) | confirmed against real instance (id capture is new this batch) |
+| zip          | `zip`         | confirmed against real instance   |
 
 ### `stock.move` (for `items_summary`)
 
@@ -181,6 +316,22 @@ x5"` came through correctly, including multi-line pickings).
 |-----------------|---------------------|---------------|
 | product name     | `product_id` (display name half of the m2o tuple) | confirmed against real instance |
 | quantity         | `product_uom_qty`  | confirmed against real instance |
+
+### `stock.picking.type` (for operation type sync config)
+
+| our field                | odoo field    | status       |
+|---------------------------|---------------|---------------|
+| name                      | `name`        | confirmed against real instance |
+| code                      | `code`        | confirmed against real instance — observed values `incoming`/`outgoing`/`internal`/`mrp_operation`/`repair_operation` (Repairs) |
+| warehouse_id              | `warehouse_id` (id half of the m2o tuple) | confirmed against real instance |
+
+### `stock.warehouse` (for warehouse sync config)
+
+| our field    | odoo field                              | status       |
+|--------------|-------------------------------------------|---------------|
+| name         | `name`                                    | confirmed against real instance |
+| code         | `code`                                    | confirmed against real instance (e.g. "WH") |
+| address      | via `res.partner` lookup on `partner_id`, same as picking delivery address | confirmed against real instance |
 
 ### `fleet.vehicle`
 

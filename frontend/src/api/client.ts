@@ -3,8 +3,10 @@ import type {
   OdooCredential,
   OdooCredentialTestResult,
   OdooCredentialUpsert,
+  OperationType,
   PlanningRunResult,
   TokenResponse,
+  Warehouse,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -113,5 +115,47 @@ export function runPlanning(tenantId: string): Promise<PlanningRunResult> {
   return request<PlanningRunResult>("/planning/run", {
     method: "POST",
     body: JSON.stringify({ tenant_id: tenantId }),
+  });
+}
+
+export function listOperationTypes(tenantId: string): Promise<OperationType[]> {
+  return request<OperationType[]>(`/tenants/${tenantId}/operation-types`);
+}
+
+export function refreshOperationTypes(tenantId: string): Promise<OperationType[]> {
+  return request<OperationType[]>(`/tenants/${tenantId}/operation-types/refresh`, {
+    method: "POST",
+  });
+}
+
+export function setOperationTypeSync(
+  tenantId: string,
+  operationTypeId: string,
+  isSynced: boolean,
+): Promise<OperationType> {
+  return request<OperationType>(`/tenants/${tenantId}/operation-types/${operationTypeId}/sync`, {
+    method: "PUT",
+    body: JSON.stringify({ is_synced: isSynced }),
+  });
+}
+
+export function listWarehouses(tenantId: string): Promise<Warehouse[]> {
+  return request<Warehouse[]>(`/tenants/${tenantId}/warehouses`);
+}
+
+export function refreshWarehouses(tenantId: string): Promise<Warehouse[]> {
+  return request<Warehouse[]>(`/tenants/${tenantId}/warehouses/refresh`, {
+    method: "POST",
+  });
+}
+
+export function setWarehouseSync(
+  tenantId: string,
+  warehouseId: string,
+  isSynced: boolean,
+): Promise<Warehouse> {
+  return request<Warehouse>(`/tenants/${tenantId}/warehouses/${warehouseId}/sync`, {
+    method: "PUT",
+    body: JSON.stringify({ is_synced: isSynced }),
   });
 }

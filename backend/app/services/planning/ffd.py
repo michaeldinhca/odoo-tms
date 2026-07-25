@@ -1,12 +1,21 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
 class Address:
-    street1: str = ""
+    """Structured res.partner address — kept split, not concatenated, so
+    display code composes it at render time rather than storing a pre-joined
+    blob. Reused for both picking delivery addresses and warehouse addresses
+    (see DECISIONS.md)."""
+
+    street: str = ""
     street2: str = ""
     city: str = ""
-    country: str = ""
+    state_id: int | None = None
+    state_name: str = ""
+    country_id: int | None = None
+    country_name: str = ""
     zip: str = ""
 
 
@@ -20,6 +29,14 @@ class Order:
     customer_name: str = ""
     items_summary: str = ""
     address: Address = field(default_factory=Address)
+    state: str = ""
+    scheduled_date: datetime | None = None
+    picking_type_id: int | None = None
+    warehouse_id: int | None = None
+    warehouse_name: str = ""
+    origin: str = ""
+    shipping_weight: float | None = None
+    note: str = ""
 
 
 @dataclass

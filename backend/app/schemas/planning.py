@@ -9,10 +9,13 @@ class PlanningRunRequest(BaseModel):
 
 
 class Address(BaseModel):
-    street1: str = ""
+    street: str = ""
     street2: str = ""
     city: str = ""
-    country: str = ""
+    state_id: int | None = None
+    state_name: str = ""
+    country_id: int | None = None
+    country_name: str = ""
     zip: str = ""
 
 
@@ -22,6 +25,10 @@ class RouteStop(BaseModel):
     customer_name: str = ""
     items_summary: str = ""
     address: Address = Field(default_factory=Address)
+    state: str = ""
+    scheduled_date: datetime | None = None
+    origin: str = ""
+    warehouse_name: str = ""
     eta: datetime | None = None
 
 
