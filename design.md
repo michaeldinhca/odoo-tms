@@ -99,7 +99,7 @@ One radius token, one shadow token, used everywhere without exception:
 | `Button` | `Button.tsx` | `variant`: `primary` (solid accent) / `secondary` (bordered). `size`: `default` / `sm` / `icon`. |
 | `Input` | `Input.tsx` | Optional `label` prop renders the label+field as one unit; omit it for a bare input (e.g. inline table-row filters). |
 | `Select` | `Select.tsx` | Same `label` pattern as `Input`. |
-| `Card` | `Card.tsx` | Optional `heading` prop (named to avoid colliding with the native `title` HTML attribute). Basis for panels now; will be the basis for vehicle boxes/cluster groups in a later phase. |
+| `Card` | `Card.tsx` | Optional `heading` prop (named to avoid colliding with the native `title` HTML attribute). Forwards its ref (`forwardRef<HTMLDivElement, CardProps>`) so it composes with `useDroppable`/`useDraggable` and similar. Basis for panels, and for the Load Planning page's vehicle/unassigned drop targets. |
 | `Badge` | `Badge.tsx` | `variant`: `neutral` / `accent` / `ok` / `warning` / `full`. Used for connection state, sync/link status, and vehicle/driver status today. |
 | `CapacityBar` | `CapacityBar.tsx` | Takes `value`/`max` (any shared unit), computes a 0–100% fill and picks `ok`/`warning`/`full` at 85%/100% thresholds. Real `role="progressbar"` semantics. Used on the Load Planning page's vehicle cards (`frontend/src/loadPlanning/VehicleCard.tsx`) — one bar for weight, one for volume, since a vehicle can be full on one axis and empty on the other. |
 | `Table` / `TableHead` / `TableBody` / `TableRow` / `Th` / `Td` | `Table.tsx` | Composable primitives mirroring plain HTML table structure, not one generic data-grid — there's no sorting/virtualization need yet. Used for every table in the app today (Operation Types, Warehouses, Vehicles, Drivers, Planning results) and will be the basis for the dense unassigned-pickings list later. |
@@ -166,9 +166,31 @@ non-trivial `useReducer`-backed page. Its supporting code lives in
 clustering.ts` (`getDistanceKm`/`getBearing`/`getCompassDirection`/
 `clusterDestinations` — pure geo math, no React/domain coupling, ported
 from `backend/app/services/planning/haversine.py`'s formula so on-screen
-distances agree with the backend's). This phase is the static/read-only
-layout only — see `DECISIONS.md` if a drag-and-drop phase adds new
-architectural choices worth logging there.
+distances agree with the backend's).
+
+**Drag-and-drop (2026-07-25, follow-up):** `@dnd-kit/core` wires a single
+picking card at a time between the unassigned panel and vehicle cards —
+`@dnd-kit/utilities` was skipped (not needed: the original card is just
+dimmed via `isDragging` rather than transform-followed, and `DragOverlay`
+positions its own floating copy without help), and `@dnd-kit/sortable`
+is intentionally not installed yet (within-vehicle reordering is a later
+phase). `Card` (`components/ui/Card.tsx`) now forwards its ref so
+`useDroppable`/`useDraggable` can attach to it directly. The "drag over"
+state on a droppable `Card` is a `ring-2 ring-accent` rather than a
+second `border-*`/`bg-*` utility layered on top of Card's own — this
+project doesn't use `tailwind-merge`, so two utilities touching the same
+CSS property (e.g. `border-border` from Card plus a conditional
+`border-accent`) have an unpredictable winner based on Tailwind's
+generated stylesheet order, not DOM class order. A ring uses `box-shadow`
+instead, which doesn't collide with either. The reducer's `MOVE_ITEMS`
+action takes `pickingIds: string[]` (always length 1 today) rather than
+a single-id shape, so a later multi-select phase can move several
+pickings in one dispatch without a new action type or a breaking rename.
+
+This phase is drag-only — no within-vehicle reordering, no multi-select,
+no capacity-overfill blocking, no backend persistence. See DECISIONS.md
+if a future reordering phase adds new architectural choices worth
+logging there.
 
 ## Decisions log
 

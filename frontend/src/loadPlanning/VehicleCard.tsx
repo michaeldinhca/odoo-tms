@@ -1,9 +1,31 @@
-import { Card, CapacityBar } from "../components/ui";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { CapacityBar, Card, cn } from "../components/ui";
 import type { Picking, Vehicle } from "./types";
 
-function StopRow({ stopNumber, picking }: { stopNumber: number; picking: Picking }) {
+interface StopRowProps {
+  stopNumber: number;
+  picking: Picking;
+  vehicleId: string;
+}
+
+function StopRow({ stopNumber, picking, vehicleId }: StopRowProps) {
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
+    id: picking.id,
+    data: { containerId: vehicleId },
+  });
+
   return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(
+        "flex cursor-grab items-center gap-3 rounded-md border border-border bg-surface px-3 py-2",
+        "touch-none transition-colors hover:bg-bg active:cursor-grabbing motion-reduce:transition-none",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        isDragging && "opacity-40",
+      )}
+    >
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-bg text-xs font-medium text-text-muted">
         {stopNumber}
       </span>
@@ -24,11 +46,16 @@ interface VehicleCardProps {
 }
 
 export function VehicleCard({ vehicle, pickings }: VehicleCardProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: vehicle.id });
   const totalWeightKg = pickings.reduce((sum, p) => sum + p.weightKg, 0);
   const totalVolumeM3 = pickings.reduce((sum, p) => sum + p.volumeM3, 0);
 
   return (
-    <Card heading={vehicle.name} className="flex flex-col gap-4">
+    <Card
+      ref={setNodeRef}
+      heading={vehicle.name}
+      className={cn("flex flex-col gap-4", isOver && "ring-2 ring-accent")}
+    >
       <div className="flex flex-col gap-2">
         <CapacityBar label="Weight" value={totalWeightKg} max={vehicle.capacityKg} />
         <CapacityBar label="Volume" value={totalVolumeM3} max={vehicle.capacityM3} />
@@ -42,7 +69,7 @@ export function VehicleCard({ vehicle, pickings }: VehicleCardProps) {
             Stops — FILO (last loaded, first delivered)
           </p>
           {pickings.map((picking, index) => (
-            <StopRow key={picking.id} stopNumber={index + 1} picking={picking} />
+            <StopRow key={picking.id} stopNumber={index + 1} picking={picking} vehicleId={vehicle.id} />
           ))}
         </div>
       )}

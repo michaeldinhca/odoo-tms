@@ -162,9 +162,27 @@ gets done.
       `frontend/src/loadPlanning/fixtures.ts`, swappable for a real API
       call later without touching the panels. No drag-and-drop yet — see
       TODO below.
-- [ ] Load Planning board: drag-and-drop (dnd-kit), real reorder/
-      reassign actions on the reducer, real API data instead of fixtures,
-      working multi-select
+- [x] Load Planning board: single-card drag-and-drop wired with
+      `@dnd-kit/core` (`@dnd-kit/sortable` deliberately not installed —
+      within-vehicle reordering is a later phase). `DndContext` wraps the
+      whole board with `PointerSensor` (8px activation distance, avoids
+      accidental drags on tap) + `KeyboardSensor`; each picking row is
+      `useDraggable`, the unassigned panel and each vehicle `Card` are
+      `useDroppable` with a `ring-2 ring-accent` drag-over state;
+      `DragOverlay` shows a floating preview while the original row dims.
+      New reducer action `MOVE_ITEMS` (takes `pickingIds: string[]`,
+      always length 1 today, so a later multi-select phase doesn't need
+      a new action type) resolves the source container from the drag
+      event's `data.current.containerId` and removes/appends accordingly;
+      dropping back into the same container is a no-op both at the
+      component level (skips dispatch) and in the reducer (returns the
+      same state reference so `useReducer` bails out of re-rendering).
+      `components/ui/Card.tsx` now forwards its ref to support this.
+      Capacity bars update automatically since they already derive from
+      vehicle contents — confirmed, no new capacity logic needed.
+- [ ] Load Planning board: within-vehicle reorder (`@dnd-kit/sortable`),
+      real API data instead of fixtures, working multi-select, capacity
+      validation/blocking, backend persistence
 
 ## Infra
 

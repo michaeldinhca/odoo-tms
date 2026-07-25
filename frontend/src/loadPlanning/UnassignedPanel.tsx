@@ -1,7 +1,8 @@
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useMemo, useState } from "react";
 import { Card, cn } from "../components/ui";
 import { clusterDestinations, type Coordinates, type CompassDirection } from "../lib/clustering";
-import type { Picking } from "./types";
+import { UNASSIGNED_CONTAINER_ID, type Picking } from "./types";
 
 const DIRECTION_LABELS: Record<CompassDirection, string> = {
   N: "North",
@@ -21,8 +22,23 @@ function formatDistanceRange(minKm: number, maxKm: number): string {
 }
 
 function PickingRow({ picking }: { picking: Picking }) {
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
+    id: picking.id,
+    data: { containerId: UNASSIGNED_CONTAINER_ID },
+  });
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2 transition-colors hover:bg-bg motion-reduce:transition-none">
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(
+        "flex cursor-grab items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2",
+        "touch-none transition-colors hover:bg-bg active:cursor-grabbing motion-reduce:transition-none",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        isDragging && "opacity-40",
+      )}
+    >
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-text">{picking.customerName}</p>
         <p className="truncate text-xs text-text-muted">{picking.address}</p>
@@ -45,6 +61,7 @@ interface UnassignedPanelProps {
 export function UnassignedPanel({ pickings, depot }: UnassignedPanelProps) {
   const clusters = useMemo(() => clusterDestinations(pickings, depot), [pickings, depot]);
   const [collapsed, setCollapsed] = useState<Set<CompassDirection>>(new Set());
+  const { setNodeRef, isOver } = useDroppable({ id: UNASSIGNED_CONTAINER_ID });
 
   function toggle(direction: CompassDirection) {
     setCollapsed((prev) => {
@@ -56,7 +73,11 @@ export function UnassignedPanel({ pickings, depot }: UnassignedPanelProps) {
   }
 
   return (
-    <Card heading={`Unassigned (${pickings.length})`} className="flex flex-col gap-3">
+    <Card
+      ref={setNodeRef}
+      heading={`Unassigned (${pickings.length})`}
+      className={cn("flex flex-col gap-3", isOver && "ring-2 ring-accent")}
+    >
       {pickings.length === 0 ? (
         <p className="text-sm text-text-muted">
           No unassigned pickings — everything has been assigned to a vehicle.

@@ -36,4 +36,18 @@ export interface BoardState {
   selectedIds: Set<string>;
 }
 
-export type BoardAction = { type: "SELECT_ITEM"; pickingId: string };
+/** Well-known droppable/container id for the unassigned panel — vehicle
+ * ids are the container ids everywhere else, so this needs its own
+ * sentinel that can't collide with a real vehicle id. */
+export const UNASSIGNED_CONTAINER_ID = "unassigned";
+
+export type BoardAction =
+  | { type: "SELECT_ITEM"; pickingId: string }
+  | {
+      type: "MOVE_ITEMS";
+      /** Always a single-element array in the drag-and-drop phase — kept
+       * as an array so a later multi-select phase can move several
+       * pickings in one dispatch without a new action type. */
+      pickingIds: string[];
+      destinationContainerId: string;
+    };
