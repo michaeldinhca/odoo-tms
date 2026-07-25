@@ -125,3 +125,11 @@ button {
   padding: 0.4rem;
   font-size: 1rem;
 }
+
+.preview-panel {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f7f7f7;
+}

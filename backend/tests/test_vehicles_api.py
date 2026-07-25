@@ -18,6 +18,7 @@ from app.api.vehicles import (
     update_vehicle,
 )
 from app.models.driver import Driver
+from app.models.odoo_credential import TenantOdooCredential
 from app.schemas.fleet import VehicleCreate, VehicleLinkOdoo, VehicleUpdate
 
 TENANT_ID = uuid.uuid4()
@@ -29,10 +30,20 @@ def _new_vehicle(session, **kwargs):
     return create_vehicle(TENANT_ID, VehicleCreate(**kwargs), session, USER)
 
 
+def _active_credential(session):
+    credential = TenantOdooCredential(
+        tenant_id=TENANT_ID, url="https://x.odoo.com", db="x", username="u",
+        encrypted_key="k", state="active",
+    )
+    session.add(credential)
+    session.commit()
+    return credential
+
+
 def test_create_and_list_vehicle(fleet_db_session):
     _new_vehicle(fleet_db_session, vehicle_type="truck")
 
-    vehicles = list_vehicles(TENANT_ID, None, None, fleet_db_session, USER)
+    vehicles = list_vehicles(TENANT_ID, None, None, False, fleet_db_session, USER)
 
     assert len(vehicles) == 1
     assert vehicles[0].name == "Truck 1"
@@ -44,7 +55,7 @@ def test_list_vehicles_filters_by_status(fleet_db_session):
     _new_vehicle(fleet_db_session, name="Active Van", status="active")
     _new_vehicle(fleet_db_session, name="Retired Van", status="inactive")
 
-    active_only = list_vehicles(TENANT_ID, "active", None, fleet_db_session, USER)
+    active_only = list_vehicles(TENANT_ID, "active", None, False, fleet_db_session, USER)
 
     assert [v.name for v in active_only] == ["Active Van"]
 
@@ -79,10 +90,11 @@ def test_delete_vehicle_succeeds_when_not_referenced(fleet_db_session):
 
     delete_vehicle(TENANT_ID, vehicle.id, fleet_db_session, USER)
 
-    assert list_vehicles(TENANT_ID, None, None, fleet_db_session, USER) == []
+    assert list_vehicles(TENANT_ID, None, None, False, fleet_db_session, USER) == []
 
 
 def test_link_vehicle_to_odoo_sets_link_fields_without_mutating_others(fleet_db_session):
+    _active_credential(fleet_db_session)
     vehicle = _new_vehicle(fleet_db_session, vehicle_type="truck", payload_capacity_kg=1000.0)
     link_payload = VehicleLinkOdoo(odoo_fleet_vehicle_id=42)
 
@@ -94,7 +106,18 @@ def test_link_vehicle_to_odoo_sets_link_fields_without_mutating_others(fleet_db_
     assert linked.payload_capacity_kg == 1000.0  # not overwritten
 
 
+def test_link_vehicle_to_odoo_blocked_when_connection_not_active(fleet_db_session):
+    vehicle = _new_vehicle(fleet_db_session)
+    link_payload = VehicleLinkOdoo(odoo_fleet_vehicle_id=42)
+
+    with pytest.raises(HTTPException) as exc_info:
+        link_vehicle_to_odoo(TENANT_ID, vehicle.id, link_payload, fleet_db_session, USER)
+
+    assert exc_info.value.status_code in (404, 409)  # no connection at all -> 404; draft -> 409
+
+
 def test_unlink_vehicle_from_odoo_clears_link_fields_only(fleet_db_session):
+    _active_credential(fleet_db_session)
     vehicle = _new_vehicle(fleet_db_session)
     link_payload = VehicleLinkOdoo(odoo_fleet_vehicle_id=42)
     link_vehicle_to_odoo(TENANT_ID, vehicle.id, link_payload, fleet_db_session, USER)
@@ -104,6 +127,20 @@ def test_unlink_vehicle_from_odoo_clears_link_fields_only(fleet_db_session):
     assert unlinked.odoo_fleet_vehicle_id is None
     assert unlinked.odoo_link_status == "unlinked"
     assert unlinked.name == "Truck 1"  # not overwritten
+
+
+def test_archived_vehicle_hidden_from_default_list_but_visible_with_include_archived(
+    fleet_db_session,
+):
+    vehicle = _new_vehicle(fleet_db_session)
+    update_vehicle(TENANT_ID, vehicle.id, VehicleUpdate(active=False), fleet_db_session, USER)
+
+    default_list = list_vehicles(TENANT_ID, None, None, False, fleet_db_session, USER)
+    with_archived = list_vehicles(TENANT_ID, None, None, True, fleet_db_session, USER)
+
+    assert default_list == []
+    assert [v.id for v in with_archived] == [vehicle.id]
+    assert with_archived[0].active is False
 
 
 def test_vehicle_endpoints_reject_mismatched_tenant(fleet_db_session):

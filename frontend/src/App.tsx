@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import NavBar from "./components/NavBar";
 import RequireAuth from "./components/RequireAuth";
+import { OdooInstanceProvider } from "./context/OdooInstanceContext";
 import ConnectionPage from "./pages/ConnectionPage";
 import DriversPage from "./pages/DriversPage";
 import LoginPage from "./pages/LoginPage";
@@ -11,7 +12,7 @@ import WarehousesPage from "./pages/WarehousesPage";
 
 export default function App() {
   return (
-    <>
+    <OdooInstanceProvider>
       <NavBar />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -65,6 +66,6 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/planning" replace />} />
       </Routes>
-    </>
+    </OdooInstanceProvider>
   );
 }

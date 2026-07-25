@@ -23,7 +23,8 @@ class VehicleCreate(BaseModel):
 
 class VehicleUpdate(BaseModel):
     """All fields optional — only the ones provided are applied (partial
-    update); omitted fields are left unchanged."""
+    update); omitted fields are left unchanged. `active` is the archive
+    flag — set it False instead of deleting a referenced vehicle."""
 
     name: str | None = None
     license_plate: str | None = None
@@ -33,6 +34,7 @@ class VehicleUpdate(BaseModel):
     fuel_consumption_per_100km: float | None = None
     home_warehouse_id: uuid.UUID | None = None
     status: VehicleStatus | None = None
+    active: bool | None = None
 
 
 class VehicleRead(BaseModel):
@@ -50,6 +52,7 @@ class VehicleRead(BaseModel):
     status: str
     odoo_fleet_vehicle_id: int | None
     odoo_link_status: str
+    active: bool
     created_at: datetime
     updated_at: datetime
 
@@ -71,7 +74,8 @@ class DriverCreate(BaseModel):
 
 class DriverUpdate(BaseModel):
     """All fields optional — only the ones provided are applied (partial
-    update); omitted fields are left unchanged."""
+    update); omitted fields are left unchanged. `active` is the archive
+    flag — set it False instead of deleting a referenced driver."""
 
     name: str | None = None
     phone: str | None = None
@@ -81,6 +85,7 @@ class DriverUpdate(BaseModel):
     status: DriverStatus | None = None
     locked_until: datetime | None = None
     assigned_vehicle_id: uuid.UUID | None = None
+    active: bool | None = None
 
 
 class DriverRead(BaseModel):
@@ -98,6 +103,7 @@ class DriverRead(BaseModel):
     assigned_vehicle_id: uuid.UUID | None
     odoo_employee_id: int | None
     odoo_link_status: str
+    active: bool
     created_at: datetime
     updated_at: datetime
 

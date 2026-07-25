@@ -1,12 +1,15 @@
 import { Link, useNavigate } from "react-router-dom";
 import { clearSession, hasValidSession } from "../api/client";
+import { useOdooInstance } from "../context/OdooInstanceContext";
 
 export default function NavBar() {
   const navigate = useNavigate();
+  const { refetch } = useOdooInstance();
   const loggedIn = hasValidSession();
 
   function handleLogout() {
     clearSession();
+    refetch();
     navigate("/login");
   }
 

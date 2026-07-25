@@ -18,6 +18,7 @@ import type {
   OdooFleetVehicleOption,
   Warehouse,
 } from "../api/types";
+import { useOdooInstance } from "../context/OdooInstanceContext";
 
 const EMPTY_FORM: FleetVehicleInput = {
   name: "",
@@ -32,8 +33,10 @@ const EMPTY_FORM: FleetVehicleInput = {
 
 export default function VehiclesPage() {
   const tenantId = getTenantId();
+  const { isActive } = useOdooInstance();
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [form, setForm] = useState<FleetVehicleInput>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,9 +46,15 @@ export default function VehiclesPage() {
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [selectedOdooId, setSelectedOdooId] = useState<string>("");
 
+  function loadVehicles() {
+    if (!tenantId) return;
+    listVehicles(tenantId, showArchived).then(setVehicles).catch(() => {});
+  }
+
+  useEffect(loadVehicles, [tenantId, showArchived]);
+
   useEffect(() => {
     if (!tenantId) return;
-    listVehicles(tenantId).then(setVehicles).catch(() => {});
     listWarehouses(tenantId).then(setWarehouses).catch(() => {});
   }, [tenantId]);
 
@@ -145,6 +154,16 @@ export default function VehiclesPage() {
     }
   }
 
+  async function handleArchiveToggle(vehicle: FleetVehicle) {
+    setError(null);
+    try {
+      await updateVehicle(tenantId!, vehicle.id, { active: !vehicle.active });
+      loadVehicles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update archive state");
+    }
+  }
+
   return (
     <div className="page">
       <h1>Vehicles</h1>
@@ -225,6 +244,17 @@ export default function VehiclesPage() {
         </div>
       </form>
 
+      <div className="actions">
+        <label>
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />{" "}
+          Show archived
+        </label>
+      </div>
+
       <table className="route-table">
         <thead>
           <tr>
@@ -253,6 +283,8 @@ export default function VehiclesPage() {
                       Unlink
                     </button>
                   </>
+                ) : !isActive ? (
+                  <span className="hint">Connect Odoo to link vehicles.</span>
                 ) : linkingId === vehicle.id ? (
                   odooVehicles && !odooAvailable ? (
                     <span className="hint">Fleet module not available on this Odoo instance.</span>
@@ -287,6 +319,9 @@ export default function VehiclesPage() {
               <td>
                 <button type="button" onClick={() => handleEdit(vehicle)}>
                   Edit
+                </button>
+                <button type="button" onClick={() => handleArchiveToggle(vehicle)}>
+                  {vehicle.active ? "Archive" : "Unarchive"}
                 </button>
                 <button type="button" onClick={() => handleDelete(vehicle)}>
                   Delete

@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_current_user, get_db
 from app.models.driver import Driver
-from app.models.odoo_credential import TenantOdooCredential
 from app.schemas.fleet import (
     DriverCreate,
     DriverLinkOdoo,
@@ -19,6 +18,7 @@ from app.services.fleet_link_sync import sync_link_staleness
 from app.services.fleet_lookup import fetch_employees
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
+from app.services.odoo_credential_gate import require_active_instance
 
 router = APIRouter(prefix="/tenants/{tenant_id}/drivers", tags=["drivers"])
 
@@ -41,6 +41,7 @@ def _get_driver_or_404(db: Session, tenant_id: uuid.UUID, driver_id: uuid.UUID) 
 def list_drivers(
     tenant_id: uuid.UUID,
     status_filter: DriverStatus | None = None,
+    include_archived: bool = False,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> list[Driver]:
@@ -48,6 +49,8 @@ def list_drivers(
     query = db.query(Driver).filter_by(tenant_id=tenant_id)
     if status_filter is not None:
         query = query.filter(Driver.status == status_filter)
+    if not include_archived:
+        query = query.filter(Driver.active.is_(True))
     return query.order_by(Driver.name).all()
 
 
@@ -72,15 +75,10 @@ def list_odoo_employees(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OdooEmployeeList:
-    """Browse-only — never auto-creates local drivers from this list."""
+    """Browse-only — never auto-creates local drivers from this list.
+    Requires an active connection, same as any other Odoo-reaching call."""
     _require_same_tenant(tenant_id, current_user)
-    credential = (
-        db.query(TenantOdooCredential).filter(TenantOdooCredential.tenant_id == tenant_id).first()
-    )
-    if credential is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="No Odoo connection configured"
-        )
+    credential = require_active_instance(db, tenant_id)
 
     client = build_client(credential)
     try:
@@ -146,7 +144,10 @@ def delete_driver(
     if driver.status == "active":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete an active driver; set status to inactive first",
+            detail=(
+                "Cannot delete an active driver; set status to inactive first, "
+                "or archive this driver instead of deleting it"
+            ),
         )
 
     db.delete(driver)
@@ -162,8 +163,10 @@ def link_driver_to_odoo(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> Driver:
     """Sets the Odoo cross-reference only — never touches any other field on
-    the local driver (see DECISIONS.md)."""
+    the local driver (see DECISIONS.md). Requires an active connection, same
+    reasoning as link_vehicle_to_odoo; unlinking has no such requirement."""
     _require_same_tenant(tenant_id, current_user)
+    require_active_instance(db, tenant_id)
     driver = _get_driver_or_404(db, tenant_id, driver_id)
     driver.odoo_employee_id = payload.odoo_employee_id
     driver.odoo_link_status = "linked"

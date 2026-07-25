@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -13,6 +12,15 @@ class TenantOdooCredential(Base):
 
     `encrypted_key` is Fernet-encrypted at rest (see app.core.crypto) and must
     never be logged, returned in API responses, or stored in plaintext.
+
+    `state` is the connection's staged-onboarding state machine (see
+    DECISIONS.md "Odoo connection state machine"): `draft` (credentials saved
+    but not yet activated), `active` (company selection completed at least
+    once — Odoo-dependent screens are gated on this), `error` (reserved for
+    future use, not yet set anywhere). `activated_at` is set the first time
+    the connection transitions to `active`. `last_synced_operation_types_at`/
+    `last_synced_warehouses_at` record the last successful "confirm and
+    apply" resync (not preview) for each.
 
     `company_id`/`company_name` cache the tenant's selected Odoo res.company
     (see DECISIONS.md "Multi-company handled as one selectable default
@@ -29,16 +37,22 @@ class TenantOdooCredential(Base):
 
     __tablename__ = "tenant_odoo_credentials"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, unique=True, index=True
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, unique=True, index=True
     )
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     db: Mapped[str] = mapped_column(String(255), nullable=False)
     username: Mapped[str] = mapped_column(String(255), nullable=False)
     encrypted_key: Mapped[str] = mapped_column(String(1000), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_operation_types_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_synced_warehouses_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     company_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     server_version: Mapped[str | None] = mapped_column(String(50), nullable=True)

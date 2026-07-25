@@ -3,11 +3,17 @@ export interface TokenResponse {
   token_type: string;
 }
 
+export type OdooConnectionState = "draft" | "active" | "error";
+
 export interface OdooCredential {
   tenant_id: string;
   url: string;
   db: string;
   username: string;
+  state: OdooConnectionState;
+  activated_at: string | null;
+  last_synced_operation_types_at: string | null;
+  last_synced_warehouses_at: string | null;
   company_id: number | null;
   company_name: string | null;
   server_version: string | null;
@@ -88,6 +94,7 @@ export interface OperationType {
   code: string;
   warehouse_id: number | null;
   is_synced: boolean;
+  active: boolean;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
@@ -108,15 +115,40 @@ export interface Warehouse {
   country_name: string;
   zip: string;
   is_synced: boolean;
+  active: boolean;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
+export interface OperationTypeDiffItem {
+  odoo_operation_type_id: number;
+  name: string;
+  code: string;
+}
+
+export interface OperationTypeRefreshPreview {
+  new: OperationTypeDiffItem[];
+  removed: OperationTypeDiffItem[];
+  unchanged_count: number;
+}
+
+export interface WarehouseDiffItem {
+  odoo_warehouse_id: number;
+  name: string;
+  code: string;
+}
+
+export interface WarehouseRefreshPreview {
+  new: WarehouseDiffItem[];
+  removed: WarehouseDiffItem[];
+  unchanged_count: number;
+}
+
 export type FleetVehicleType = "van" | "truck" | "motorbike" | "three_wheeler" | "other";
 export type FleetVehicleStatus = "active" | "inactive" | "maintenance";
 export type DriverStatus = "active" | "locked" | "inactive";
-export type OdooLinkStatus = "unlinked" | "linked";
+export type OdooLinkStatus = "unlinked" | "linked" | "stale";
 
 export interface FleetVehicle {
   id: string;
@@ -131,6 +163,7 @@ export interface FleetVehicle {
   status: FleetVehicleStatus;
   odoo_fleet_vehicle_id: number | null;
   odoo_link_status: OdooLinkStatus;
+  active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -144,6 +177,7 @@ export interface FleetVehicleInput {
   fuel_consumption_per_100km?: number | null;
   home_warehouse_id?: string | null;
   status?: FleetVehicleStatus;
+  active?: boolean;
 }
 
 export interface Driver {
@@ -159,6 +193,7 @@ export interface Driver {
   assigned_vehicle_id: string | null;
   odoo_employee_id: number | null;
   odoo_link_status: OdooLinkStatus;
+  active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -172,6 +207,7 @@ export interface DriverInput {
   status?: DriverStatus;
   locked_until?: string | null;
   assigned_vehicle_id?: string | null;
+  active?: boolean;
 }
 
 export interface OdooFleetVehicleOption {

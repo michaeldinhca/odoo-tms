@@ -14,6 +14,7 @@ class OperationTypeRead(BaseModel):
     code: str
     warehouse_id: int | None
     is_synced: bool
+    active: bool
     last_seen_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -21,6 +22,24 @@ class OperationTypeRead(BaseModel):
 
 class OperationTypeSyncToggle(BaseModel):
     is_synced: bool
+
+
+class ArchiveToggle(BaseModel):
+    active: bool
+
+
+class OperationTypeDiffItem(BaseModel):
+    odoo_operation_type_id: int
+    name: str
+    code: str
+
+
+class OperationTypeRefreshPreview(BaseModel):
+    """Result of a dry-run resync — nothing is written to the DB yet."""
+
+    new: list[OperationTypeDiffItem]
+    removed: list[OperationTypeDiffItem]
+    unchanged_count: int
 
 
 class WarehouseRead(BaseModel):
@@ -40,6 +59,7 @@ class WarehouseRead(BaseModel):
     country_name: str
     zip: str
     is_synced: bool
+    active: bool
     last_seen_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -47,3 +67,17 @@ class WarehouseRead(BaseModel):
 
 class WarehouseSyncToggle(BaseModel):
     is_synced: bool
+
+
+class WarehouseDiffItem(BaseModel):
+    odoo_warehouse_id: int
+    name: str
+    code: str
+
+
+class WarehouseRefreshPreview(BaseModel):
+    """Result of a dry-run resync — nothing is written to the DB yet."""
+
+    new: list[WarehouseDiffItem]
+    removed: list[WarehouseDiffItem]
+    unchanged_count: int

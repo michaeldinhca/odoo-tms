@@ -26,6 +26,10 @@ changes.
 | db             | text        | Odoo database name                                |
 | username       | text        |                                                    |
 | encrypted_key  | text        | Fernet-encrypted Odoo API key — never plaintext   |
+| state          | text        | `draft`/`active`/`error` (see DECISIONS.md "Odoo connection state machine"); `error` is reserved, not yet set anywhere |
+| activated_at   | timestamptz, nullable | set the first time `state` transitions to `active` |
+| last_synced_operation_types_at | timestamptz, nullable | last successful (confirm, not preview) operation-type resync |
+| last_synced_warehouses_at | timestamptz, nullable | last successful (confirm, not preview) warehouse resync |
 | company_id     | integer, nullable | selected Odoo `res.company` id; NULL = all companies the API user can see, unfiltered (see DECISIONS.md "Multi-company") |
 | company_name   | text, nullable | cached display name of `company_id`, for the UI  |
 | server_version | text, nullable | raw version string from Odoo's `common.version()`, e.g. `"17.0"` |
@@ -92,6 +96,7 @@ type / warehouse sync gating" in DECISIONS.md).
 | code                     | text              | `incoming` / `outgoing` / `internal` / `mrp_operation` / ... |
 | warehouse_id             | integer, nullable | Odoo warehouse id this operation type belongs to |
 | is_synced                | boolean           | default `false`; refresh never resets this on existing rows |
+| active                   | boolean           | default `true`; archive flag, separate from `is_synced` — refresh never resets this either (see DECISIONS.md "Archive instead of hard delete") |
 | last_seen_at             | timestamptz, nullable |                                               |
 | created_at               | timestamptz       |                                                   |
 | updated_at                | timestamptz       |                                                   |
@@ -121,6 +126,7 @@ second, inconsistent structure). Populated by `POST
 | country_name    | text              | cached display name (see DECISIONS.md)       |
 | zip             | text              |                                               |
 | is_synced       | boolean           | default `false`; refresh never resets this on existing rows |
+| active          | boolean           | default `true`; archive flag — see `synced_operation_types` above |
 | last_seen_at    | timestamptz, nullable |                                           |
 | created_at      | timestamptz       |                                               |
 | updated_at      | timestamptz       |                                               |
@@ -177,10 +183,12 @@ Odoo link at all (see DECISIONS.md "Vehicles and drivers are locally-owned").
 | status                        | text              | `active`/`inactive`/`maintenance`, default `active` |
 | odoo_fleet_vehicle_id         | integer, nullable | optional cross-reference to Odoo `fleet.vehicle.id` — reference only, never a data source |
 | odoo_link_status              | text              | `unlinked`/`linked`/`stale`, default `unlinked` (see DECISIONS.md "Stale Odoo links") |
+| active                        | boolean           | default `true`; archive flag, orthogonal to `status` |
 | created_at                    | timestamptz       |                                               |
 | updated_at                    | timestamptz       |                                               |
 
-Delete is blocked if any `driver.assigned_vehicle_id` references the vehicle.
+Delete is blocked if any `driver.assigned_vehicle_id` references the vehicle
+(archive instead — see DECISIONS.md "Archive instead of hard delete").
 
 ### `drivers`
 
@@ -200,11 +208,13 @@ Same locally-owned pattern as `vehicles`.
 | assigned_vehicle_id    | UUID (FK), nullable | references `vehicles.id` — a driver's current/default vehicle, separate from any future per-trip assignment |
 | odoo_employee_id       | integer, nullable | optional cross-reference to Odoo `hr.employee.id` — reference only, never a data source |
 | odoo_link_status       | text              | `unlinked`/`linked`/`stale`, default `unlinked`  |
+| active                 | boolean           | default `true`; archive flag, orthogonal to `status` |
 | created_at             | timestamptz       |                                                   |
 | updated_at             | timestamptz       |                                                   |
 
 Delete is blocked while `status="active"` (see DECISIONS.md — a stand-in for
-"has current assignments" until real assignment tracking exists).
+"has current assignments" until real assignment tracking exists); archive
+instead is always available regardless of status.
 
 ## Core planning flow — data shapes
 
@@ -307,32 +317,39 @@ address context needed to actually dispatch it, not just the picking ID.
 | GET    | `/tenants`                           | list tenants (admin)                               | implemented |
 | POST   | `/tenants`                           | create tenant                                      | implemented |
 | GET    | `/tenants/{id}/credentials`          | get Odoo connection status (never returns key)     | implemented |
-| PUT    | `/tenants/{id}/credentials`          | set/update Odoo connection (Fernet-encrypts key)   | implemented |
+| PUT    | `/tenants/{id}/credentials`          | initial setup: set/update Odoo connection (Fernet-encrypts key); creates a `draft` row, never touches `state` on an existing one | implemented |
+| POST   | `/tenants/{id}/credentials/reauthenticate` | same field update as the PUT above, but only when `state=="active"` (409 otherwise) — see DECISIONS.md "Odoo connection state machine" | implemented |
 | POST   | `/tenants/{id}/credentials/test`     | test XML-RPC connection; also (re-)detects and persists Odoo server version | implemented |
 | GET    | `/tenants/{id}/credentials/companies`| live-list the Odoo instance's `res.company` records | implemented |
-| PUT    | `/tenants/{id}/credentials/company`  | select (or clear) the company planning is scoped to | implemented |
-| GET    | `/tenants/{id}/operation-types`      | list synced operation types (local)                | implemented |
-| POST   | `/tenants/{id}/operation-types/refresh` | pull `stock.picking.type` from Odoo, upsert (preserves existing `is_synced`) | implemented |
+| PUT    | `/tenants/{id}/credentials/company`  | select (or clear) the company planning is scoped to; transitions `state` `draft`→`active` | implemented |
+| GET    | `/tenants/{id}/operation-types`      | list synced operation types (local); `?include_archived=true` to include archived rows | implemented |
+| POST   | `/tenants/{id}/operation-types/refresh/preview` | dry-run diff against Odoo — `{new, removed, unchanged_count}`, writes nothing; requires `state=="active"` | implemented |
+| POST   | `/tenants/{id}/operation-types/refresh` | pull `stock.picking.type` from Odoo, upsert (preserves existing `is_synced`/`active`); requires `state=="active"` | implemented |
 | PUT    | `/tenants/{id}/operation-types/{row_id}/sync` | toggle `is_synced` for one operation type    | implemented |
-| GET    | `/tenants/{id}/warehouses`           | list synced warehouses (local)                     | implemented |
-| POST   | `/tenants/{id}/warehouses/refresh`   | pull `stock.warehouse` from Odoo, upsert (preserves existing `is_synced`) | implemented |
+| PUT    | `/tenants/{id}/operation-types/{row_id}/archive` | toggle `active` (archive/unarchive)         | implemented |
+| DELETE | `/tenants/{id}/operation-types/{row_id}` | delete; blocked (400) if referenced by a `synced_pickings` row — archive instead | implemented |
+| GET    | `/tenants/{id}/warehouses`           | list synced warehouses (local); `?include_archived=true` to include archived rows | implemented |
+| POST   | `/tenants/{id}/warehouses/refresh/preview` | dry-run diff against Odoo, writes nothing; requires `state=="active"` | implemented |
+| POST   | `/tenants/{id}/warehouses/refresh`   | pull `stock.warehouse` from Odoo, upsert (preserves existing `is_synced`/`active`); requires `state=="active"` | implemented |
 | PUT    | `/tenants/{id}/warehouses/{row_id}/sync` | toggle `is_synced` for one warehouse            | implemented |
-| GET    | `/tenants/{id}/vehicles`             | list vehicles (filter by `status_filter`, `home_warehouse_id`) | implemented |
+| PUT    | `/tenants/{id}/warehouses/{row_id}/archive` | toggle `active` (archive/unarchive)          | implemented |
+| DELETE | `/tenants/{id}/warehouses/{row_id}`  | delete; blocked (400) if a vehicle's `home_warehouse_id` or a `synced_pickings` row references it — archive instead | implemented |
+| GET    | `/tenants/{id}/vehicles`             | list vehicles (filter by `status_filter`, `home_warehouse_id`, `?include_archived=true`) | implemented |
 | POST   | `/tenants/{id}/vehicles`             | create a vehicle                                   | implemented |
-| GET    | `/tenants/{id}/vehicles/odoo-fleet-vehicles` | browse Odoo `fleet.vehicle` records (never auto-creates locally); also refreshes stale-link flags | implemented |
+| GET    | `/tenants/{id}/vehicles/odoo-fleet-vehicles` | browse Odoo `fleet.vehicle` records (never auto-creates locally); also refreshes stale-link flags; requires `state=="active"` | implemented |
 | GET    | `/tenants/{id}/vehicles/{vehicle_id}` | get one vehicle                                   | implemented |
-| PUT    | `/tenants/{id}/vehicles/{vehicle_id}` | partial update (only provided fields applied)      | implemented |
-| DELETE | `/tenants/{id}/vehicles/{vehicle_id}` | delete; blocked if a driver's `assigned_vehicle_id` references it | implemented |
-| PUT    | `/tenants/{id}/vehicles/{vehicle_id}/odoo-link` | link to an Odoo fleet.vehicle id (reference only) | implemented |
-| DELETE | `/tenants/{id}/vehicles/{vehicle_id}/odoo-link` | unlink                                     | implemented |
-| GET    | `/tenants/{id}/drivers`              | list drivers (filter by `status_filter`)           | implemented |
+| PUT    | `/tenants/{id}/vehicles/{vehicle_id}` | partial update (only provided fields applied, includes `active` for archiving) | implemented |
+| DELETE | `/tenants/{id}/vehicles/{vehicle_id}` | delete; blocked if a driver's `assigned_vehicle_id` references it — archive instead; no Odoo connection required | implemented |
+| PUT    | `/tenants/{id}/vehicles/{vehicle_id}/odoo-link` | link to an Odoo fleet.vehicle id (reference only); requires `state=="active"` | implemented |
+| DELETE | `/tenants/{id}/vehicles/{vehicle_id}/odoo-link` | unlink; no active-connection requirement — pure local-state removal | implemented |
+| GET    | `/tenants/{id}/drivers`              | list drivers (filter by `status_filter`, `?include_archived=true`) | implemented |
 | POST   | `/tenants/{id}/drivers`              | create a driver                                    | implemented |
-| GET    | `/tenants/{id}/drivers/odoo-employees` | browse Odoo `hr.employee` records (never auto-creates locally); also refreshes stale-link flags | implemented |
+| GET    | `/tenants/{id}/drivers/odoo-employees` | browse Odoo `hr.employee` records (never auto-creates locally); also refreshes stale-link flags; requires `state=="active"` | implemented |
 | GET    | `/tenants/{id}/drivers/{driver_id}`  | get one driver                                     | implemented |
-| PUT    | `/tenants/{id}/drivers/{driver_id}`  | partial update (only provided fields applied)      | implemented |
-| DELETE | `/tenants/{id}/drivers/{driver_id}`  | delete; blocked while `status="active"`            | implemented |
-| PUT    | `/tenants/{id}/drivers/{driver_id}/odoo-link` | link to an Odoo hr.employee id (reference only) | implemented |
-| DELETE | `/tenants/{id}/drivers/{driver_id}/odoo-link` | unlink                                     | implemented |
+| PUT    | `/tenants/{id}/drivers/{driver_id}`  | partial update (only provided fields applied, includes `active` for archiving) | implemented |
+| DELETE | `/tenants/{id}/drivers/{driver_id}`  | delete; blocked while `status="active"` — archive instead; no Odoo connection required | implemented |
+| PUT    | `/tenants/{id}/drivers/{driver_id}/odoo-link` | link to an Odoo hr.employee id (reference only); requires `state=="active"` | implemented |
+| DELETE | `/tenants/{id}/drivers/{driver_id}/odoo-link` | unlink; no active-connection requirement — pure local-state removal | implemented |
 | POST   | `/planning/run`                      | trigger a planning run for a tenant                | implemented |
 | GET    | `/planning/results/{id}`             | fetch a planning run's result                      | implemented |
 

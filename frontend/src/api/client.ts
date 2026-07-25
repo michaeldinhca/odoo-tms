@@ -10,9 +10,11 @@ import type {
   OdooEmployeeList,
   OdooFleetVehicleList,
   OperationType,
+  OperationTypeRefreshPreview,
   PlanningRunResult,
   TokenResponse,
   Warehouse,
+  WarehouseRefreshPreview,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -121,6 +123,16 @@ export function upsertCredential(
   });
 }
 
+export function reauthenticateCredential(
+  tenantId: string,
+  payload: OdooCredentialUpsert,
+): Promise<OdooCredential> {
+  return request<OdooCredential>(`/tenants/${tenantId}/credentials/reauthenticate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function testCredential(tenantId: string): Promise<OdooCredentialTestResult> {
   return request<OdooCredentialTestResult>(`/tenants/${tenantId}/credentials/test`, {
     method: "POST",
@@ -149,8 +161,22 @@ export function runPlanning(tenantId: string): Promise<PlanningRunResult> {
   });
 }
 
-export function listOperationTypes(tenantId: string): Promise<OperationType[]> {
-  return request<OperationType[]>(`/tenants/${tenantId}/operation-types`);
+export function listOperationTypes(
+  tenantId: string,
+  includeArchived = false,
+): Promise<OperationType[]> {
+  return request<OperationType[]>(
+    `/tenants/${tenantId}/operation-types?include_archived=${includeArchived}`,
+  );
+}
+
+export function previewOperationTypesRefresh(
+  tenantId: string,
+): Promise<OperationTypeRefreshPreview> {
+  return request<OperationTypeRefreshPreview>(
+    `/tenants/${tenantId}/operation-types/refresh/preview`,
+    { method: "POST" },
+  );
 }
 
 export function refreshOperationTypes(tenantId: string): Promise<OperationType[]> {
@@ -170,8 +196,31 @@ export function setOperationTypeSync(
   });
 }
 
-export function listWarehouses(tenantId: string): Promise<Warehouse[]> {
-  return request<Warehouse[]>(`/tenants/${tenantId}/warehouses`);
+export function setOperationTypeActive(
+  tenantId: string,
+  operationTypeId: string,
+  active: boolean,
+): Promise<OperationType> {
+  return request<OperationType>(
+    `/tenants/${tenantId}/operation-types/${operationTypeId}/archive`,
+    { method: "PUT", body: JSON.stringify({ active }) },
+  );
+}
+
+export function deleteOperationType(tenantId: string, operationTypeId: string): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/operation-types/${operationTypeId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listWarehouses(tenantId: string, includeArchived = false): Promise<Warehouse[]> {
+  return request<Warehouse[]>(`/tenants/${tenantId}/warehouses?include_archived=${includeArchived}`);
+}
+
+export function previewWarehousesRefresh(tenantId: string): Promise<WarehouseRefreshPreview> {
+  return request<WarehouseRefreshPreview>(`/tenants/${tenantId}/warehouses/refresh/preview`, {
+    method: "POST",
+  });
 }
 
 export function refreshWarehouses(tenantId: string): Promise<Warehouse[]> {
@@ -191,8 +240,23 @@ export function setWarehouseSync(
   });
 }
 
-export function listVehicles(tenantId: string): Promise<FleetVehicle[]> {
-  return request<FleetVehicle[]>(`/tenants/${tenantId}/vehicles`);
+export function setWarehouseActive(
+  tenantId: string,
+  warehouseId: string,
+  active: boolean,
+): Promise<Warehouse> {
+  return request<Warehouse>(`/tenants/${tenantId}/warehouses/${warehouseId}/archive`, {
+    method: "PUT",
+    body: JSON.stringify({ active }),
+  });
+}
+
+export function deleteWarehouse(tenantId: string, warehouseId: string): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/warehouses/${warehouseId}`, { method: "DELETE" });
+}
+
+export function listVehicles(tenantId: string, includeArchived = false): Promise<FleetVehicle[]> {
+  return request<FleetVehicle[]>(`/tenants/${tenantId}/vehicles?include_archived=${includeArchived}`);
 }
 
 export function createVehicle(tenantId: string, payload: FleetVehicleInput): Promise<FleetVehicle> {
@@ -238,8 +302,8 @@ export function unlinkVehicleFromOdoo(tenantId: string, vehicleId: string): Prom
   });
 }
 
-export function listDrivers(tenantId: string): Promise<Driver[]> {
-  return request<Driver[]>(`/tenants/${tenantId}/drivers`);
+export function listDrivers(tenantId: string, includeArchived = false): Promise<Driver[]> {
+  return request<Driver[]>(`/tenants/${tenantId}/drivers?include_archived=${includeArchived}`);
 }
 
 export function createDriver(tenantId: string, payload: DriverInput): Promise<Driver> {

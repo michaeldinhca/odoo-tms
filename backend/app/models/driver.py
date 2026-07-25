@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -10,7 +10,8 @@ from app.core.db import Base
 class Driver(Base):
     """Drivers are first-class, locally-owned entities — see Vehicle's
     docstring; the same non-destructive, optional-link rule applies to
-    `odoo_employee_id` (Odoo's `hr.employee`)."""
+    `odoo_employee_id` (Odoo's `hr.employee`), and the same `active`
+    archive-flag pattern applies here too."""
 
     __tablename__ = "drivers"
 
@@ -30,6 +31,7 @@ class Driver(Base):
     )
     odoo_employee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     odoo_link_status: Mapped[str] = mapped_column(String(20), nullable=False, default="unlinked")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

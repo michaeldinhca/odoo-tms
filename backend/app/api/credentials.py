@@ -1,5 +1,6 @@
 import uuid
 import xmlrpc.client
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from app.schemas.credentials import (
 )
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
+from app.services.odoo_credential_gate import get_credential_or_404
 from app.services.odoo_version import detect_and_store_version
 
 router = APIRouter(prefix="/tenants/{tenant_id}/credentials", tags=["credentials"])
@@ -26,17 +28,13 @@ def _require_same_tenant(tenant_id: uuid.UUID, current_user: CurrentUser) -> Non
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant mismatch")
 
 
-def _get_credential_or_404(db: Session, tenant_id: uuid.UUID) -> TenantOdooCredential:
-    credential = (
-        db.query(TenantOdooCredential)
-        .filter(TenantOdooCredential.tenant_id == tenant_id)
-        .first()
-    )
-    if credential is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="No Odoo connection configured"
-        )
-    return credential
+def _apply_credential_fields(
+    credential: TenantOdooCredential, payload: OdooCredentialUpsert
+) -> None:
+    credential.url = payload.url
+    credential.db = payload.db
+    credential.username = payload.username
+    credential.encrypted_key = encrypt_secret(payload.api_key)
 
 
 @router.get("", response_model=OdooCredentialRead)
@@ -46,7 +44,7 @@ def get_credential(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> TenantOdooCredential:
     _require_same_tenant(tenant_id, current_user)
-    return _get_credential_or_404(db, tenant_id)
+    return get_credential_or_404(db, tenant_id)
 
 
 @router.put("", response_model=OdooCredentialRead)
@@ -56,6 +54,10 @@ def upsert_credential(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> TenantOdooCredential:
+    """The initial/setup save — always usable regardless of current state,
+    so a broken draft connection can always be corrected. Never touches
+    `state`/`company_id` (see `select_company` for activation and
+    `reauthenticate_credential` for the equivalent action once active)."""
     _require_same_tenant(tenant_id, current_user)
     credential = (
         db.query(TenantOdooCredential)
@@ -63,13 +65,36 @@ def upsert_credential(
         .first()
     )
     if credential is None:
-        credential = TenantOdooCredential(tenant_id=tenant_id)
+        credential = TenantOdooCredential(tenant_id=tenant_id, state="draft")
         db.add(credential)
 
-    credential.url = payload.url
-    credential.db = payload.db
-    credential.username = payload.username
-    credential.encrypted_key = encrypt_secret(payload.api_key)
+    _apply_credential_fields(credential, payload)
+
+    db.commit()
+    db.refresh(credential)
+    return credential
+
+
+@router.post("/reauthenticate", response_model=OdooCredentialRead)
+def reauthenticate_credential(
+    tenant_id: uuid.UUID,
+    payload: OdooCredentialUpsert,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> TenantOdooCredential:
+    """Distinct from the initial setup PUT above: only usable once the
+    connection is already active, so re-authenticating (e.g. after an API
+    key rotation) can never be mistaken for restarting onboarding on an
+    unconfigured connection."""
+    _require_same_tenant(tenant_id, current_user)
+    credential = get_credential_or_404(db, tenant_id)
+    if credential.state != "active":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Connection is not active yet; use the initial setup form instead",
+        )
+
+    _apply_credential_fields(credential, payload)
 
     db.commit()
     db.refresh(credential)
@@ -83,7 +108,7 @@ def test_credential(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OdooCredentialTestResult:
     _require_same_tenant(tenant_id, current_user)
-    credential = _get_credential_or_404(db, tenant_id)
+    credential = get_credential_or_404(db, tenant_id)
 
     client = build_client(credential)
     success, detail = client.test_connection()
@@ -116,7 +141,7 @@ def list_companies(
     which one to scope planning runs to (see DECISIONS.md multi-company
     entry). Read-only — nothing is persisted here."""
     _require_same_tenant(tenant_id, current_user)
-    credential = _get_credential_or_404(db, tenant_id)
+    credential = get_credential_or_404(db, tenant_id)
 
     client = build_client(credential)
     try:
@@ -135,11 +160,18 @@ def select_company(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> TenantOdooCredential:
+    """Confirming a company selection (even "All companies", i.e. both
+    fields None) is the explicit "Activate" step that completes staged
+    onboarding — see DECISIONS.md "Odoo connection state machine". Calling
+    this again later just rescopes an already-active connection."""
     _require_same_tenant(tenant_id, current_user)
-    credential = _get_credential_or_404(db, tenant_id)
+    credential = get_credential_or_404(db, tenant_id)
 
     credential.company_id = payload.company_id
     credential.company_name = payload.company_name
+    if credential.state != "active":
+        credential.state = "active"
+        credential.activated_at = datetime.now(UTC)
     db.commit()
     db.refresh(credential)
     return credential

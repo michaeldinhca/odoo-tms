@@ -20,6 +20,10 @@ class OdooCredentialRead(BaseModel):
     url: str
     db: str
     username: str
+    state: str = "draft"
+    activated_at: datetime | None = None
+    last_synced_operation_types_at: datetime | None = None
+    last_synced_warehouses_at: datetime | None = None
     company_id: int | None = None
     company_name: str | None = None
     server_version: str | None = None

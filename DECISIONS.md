@@ -310,3 +310,109 @@ base or needs tighter compliance requirements.
 fixes the underlying gap — the app must always be able to tell "not
 configured yet" apart from "you got logged out." This was a real bug, not
 just tuned around.
+
+---
+
+## 2026-07-25 — Odoo connection state machine: draft/active/error on `TenantOdooCredential`
+
+**Decision:** Kept the existing `TenantOdooCredential` model/table name
+rather than renaming it to `OdooInstance` — added a `state` column
+(`draft` → `active`, `error` reserved for future use but not yet set
+anywhere) plus `activated_at`, `last_synced_operation_types_at`,
+`last_synced_warehouses_at`. `PUT .../credentials` (initial setup) always
+creates a `draft` row and never changes `state` on an existing row.
+`PUT .../credentials/company` (selecting a company, including explicitly
+choosing "All companies") is the action that transitions `draft` → `active`
+and stamps `activated_at` the first time; calling it again while already
+`active` just rescopes the company without resetting `activated_at`. A new
+`POST .../credentials/reauthenticate` endpoint does the same field-update
+work as the initial setup PUT, but only when `state == "active"` (409
+otherwise) — kept as a distinct endpoint (not just a relabeled button) so
+the state machine is enforced server-side, not only in the UI.
+
+**Why keep the name:** renaming would have touched ~10 files (routers,
+schemas, services, tests) for no behavior change — the state-machine fields
+fit naturally onto the existing row without implying a different entity.
+
+**Why gate on company selection, not on save:** saving credentials only
+proves the URL/db/credentials are well-formed; it doesn't mean the
+dispatcher has actually finished onboarding. Company selection (even
+"All companies") is the last step in the UI wizard, so it's the natural
+"onboarding complete" signal.
+
+---
+
+## 2026-07-25 — Odoo-talking endpoints gated on `state == "active"`; Vehicle/Driver core CRUD is not
+
+**Decision:** A new `require_active_instance()` helper
+(`app/services/odoo_credential_gate.py`) returns 409 unless the tenant's
+connection is `active`. It gates: Operation Types/Warehouses `refresh` and
+`refresh/preview`, and the Vehicle/Driver `odoo-fleet-vehicles`/
+`odoo-employees` browse endpoints plus the `PUT .../odoo-link` (create a
+new link) endpoints. It does **not** gate: `unlink` (removing a reference
+is always safe, no Odoo call involved), or any Vehicle/Driver core CRUD
+(create/edit/delete/archive) — those must keep working with zero Odoo
+connection at all, per the existing "vehicles and drivers are locally-owned"
+decision above. Operation Types and Warehouses, which have no standalone
+value outside an Odoo sync, are fully gated behind an active connection at
+the page level in the frontend too.
+
+**Why:** the acceptance criteria for this batch asked for all four synced/
+fleet screens to be gated behind an active connection, but that would have
+reversed a previous, deliberate decision that a subcontracted vehicle or
+driver never in Odoo must still be manageable. Surfaced this conflict to
+the user directly rather than picking a side silently; they confirmed
+partial gating (core CRUD always available, only the Odoo-linking
+sub-feature gated) is correct.
+
+---
+
+## 2026-07-25 — Resync becomes preview-then-confirm; nothing writes on the first click
+
+**Decision:** `POST .../operation-types/refresh` and `.../warehouses/refresh`
+(the "confirm and apply" call, unchanged behavior — upserts via the existing
+`upsert_operation_types`/`upsert_warehouses`) now have a sibling
+`POST .../refresh/preview` that fetches from Odoo and diffs against the
+locally stored rows by Odoo id (`preview_operation_types`/
+`preview_warehouses` in `app/services/sync_config.py`), returning
+`{new, removed, unchanged_count}` without writing anything. The frontend's
+"Resync List" button now always calls preview first and shows the diff;
+"Confirm" performs the actual write.
+
+**Why:** "Resync List" previously wrote directly with no way to see what
+would change first — a stale operation type silently vanishing, or an
+unexpected new one appearing, was invisible until after the fact.
+
+---
+
+## 2026-07-25 — Archive (`active` flag) instead of hard delete when referenced elsewhere
+
+**Decision:** Added an `active: bool` (default `True`) column to
+`SyncedOperationType`, `SyncedWarehouse`, `Vehicle`, and `Driver` — a
+soft-delete/archive flag, deliberately separate from `is_synced` (planning
+opt-in) and `status` (business state like "maintenance"), matching Odoo's
+own `active` field convention. New `PUT .../operation-types/{id}/archive`
+and `.../warehouses/{id}/archive` endpoints toggle it; Vehicle/Driver reuse
+their existing generic `PUT` update endpoint with `active` added to the
+update schema, since a dedicated endpoint wasn't needed there. All four
+`GET` list endpoints default to `active`-only, with a new `include_archived`
+query param to see everything. New `DELETE` endpoints for Operation Types
+and Warehouses (neither had one before this batch) block with a 400
+("archive instead") when referenced: an operation type by a
+`SyncedPicking.picking_type_id` match, a warehouse by either
+`Vehicle.home_warehouse_id` or a `SyncedPicking.warehouse_id` match. The
+existing Vehicle/Driver delete guards (blocked if referenced by a driver /
+blocked while active) are unchanged, just with their error messages updated
+to mention archiving as the alternative.
+
+**Why archive refreshes don't touch it:** `upsert_operation_types`/
+`upsert_warehouses` never set `active` on an existing row — same "don't
+silently reset a toggle the user set" rule already established for
+`is_synced`. An archived row that reappears in a later Odoo refresh stays
+archived until the user explicitly unarchives it.
+
+**Note — pre-existing gap, not fixed here:** `app/services/planning/
+runner.py::fetch_vehicles` still pulls `fleet.vehicle` directly from Odoo
+on every planning run rather than using the local `vehicles` table, so
+"referenced by a planning/route record" doesn't actually apply to the
+local `Vehicle` entity yet. Logged in TODO.md as a follow-up.

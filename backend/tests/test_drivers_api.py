@@ -12,6 +12,7 @@ from app.api.drivers import (
     unlink_driver_from_odoo,
     update_driver,
 )
+from app.models.odoo_credential import TenantOdooCredential
 from app.schemas.fleet import DriverCreate, DriverLinkOdoo, DriverUpdate
 
 TENANT_ID = uuid.uuid4()
@@ -23,10 +24,20 @@ def _new_driver(session, **kwargs):
     return create_driver(TENANT_ID, DriverCreate(**kwargs), session, USER)
 
 
+def _active_credential(session):
+    credential = TenantOdooCredential(
+        tenant_id=TENANT_ID, url="https://x.odoo.com", db="x", username="u",
+        encrypted_key="k", state="active",
+    )
+    session.add(credential)
+    session.commit()
+    return credential
+
+
 def test_create_and_list_driver(fleet_db_session):
     _new_driver(fleet_db_session, phone="555-1234")
 
-    drivers = list_drivers(TENANT_ID, None, fleet_db_session, USER)
+    drivers = list_drivers(TENANT_ID, None, False, fleet_db_session, USER)
 
     assert len(drivers) == 1
     assert drivers[0].name == "Alice"
@@ -38,7 +49,7 @@ def test_list_drivers_filters_by_status(fleet_db_session):
     _new_driver(fleet_db_session, name="Alice", status="active")
     _new_driver(fleet_db_session, name="Bob", status="locked")
 
-    locked_only = list_drivers(TENANT_ID, "locked", fleet_db_session, USER)
+    locked_only = list_drivers(TENANT_ID, "locked", False, fleet_db_session, USER)
 
     assert [d.name for d in locked_only] == ["Bob"]
 
@@ -68,10 +79,11 @@ def test_delete_driver_succeeds_when_inactive(fleet_db_session):
 
     delete_driver(TENANT_ID, driver.id, fleet_db_session, USER)
 
-    assert list_drivers(TENANT_ID, None, fleet_db_session, USER) == []
+    assert list_drivers(TENANT_ID, None, False, fleet_db_session, USER) == []
 
 
 def test_link_driver_to_odoo_sets_link_fields_without_mutating_others(fleet_db_session):
+    _active_credential(fleet_db_session)
     driver = _new_driver(fleet_db_session, phone="555-1234")
     link_payload = DriverLinkOdoo(odoo_employee_id=7)
 
@@ -83,7 +95,18 @@ def test_link_driver_to_odoo_sets_link_fields_without_mutating_others(fleet_db_s
     assert linked.phone == "555-1234"  # not overwritten
 
 
+def test_link_driver_to_odoo_blocked_when_connection_not_active(fleet_db_session):
+    driver = _new_driver(fleet_db_session)
+    link_payload = DriverLinkOdoo(odoo_employee_id=7)
+
+    with pytest.raises(HTTPException) as exc_info:
+        link_driver_to_odoo(TENANT_ID, driver.id, link_payload, fleet_db_session, USER)
+
+    assert exc_info.value.status_code in (404, 409)  # no connection at all -> 404; draft -> 409
+
+
 def test_unlink_driver_from_odoo_clears_link_fields_only(fleet_db_session):
+    _active_credential(fleet_db_session)
     driver = _new_driver(fleet_db_session)
     link_payload = DriverLinkOdoo(odoo_employee_id=7)
     link_driver_to_odoo(TENANT_ID, driver.id, link_payload, fleet_db_session, USER)
@@ -93,6 +116,20 @@ def test_unlink_driver_from_odoo_clears_link_fields_only(fleet_db_session):
     assert unlinked.odoo_employee_id is None
     assert unlinked.odoo_link_status == "unlinked"
     assert unlinked.name == "Alice"  # not overwritten
+
+
+def test_archived_driver_hidden_from_default_list_but_visible_with_include_archived(
+    fleet_db_session,
+):
+    driver = _new_driver(fleet_db_session)
+    update_driver(TENANT_ID, driver.id, DriverUpdate(active=False), fleet_db_session, USER)
+
+    default_list = list_drivers(TENANT_ID, None, False, fleet_db_session, USER)
+    with_archived = list_drivers(TENANT_ID, None, True, fleet_db_session, USER)
+
+    assert default_list == []
+    assert [d.id for d in with_archived] == [driver.id]
+    assert with_archived[0].active is False
 
 
 def test_driver_endpoints_reject_mismatched_tenant(fleet_db_session):

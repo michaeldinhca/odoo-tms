@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -12,6 +12,11 @@ class SyncedOperationType(Base):
     Delivery Orders, Manufacturing, ...). Only pickings whose
     `picking_type_id` is marked `is_synced=True` here are pulled by the
     stock.picking sync (see app.services.planning.runner.fetch_open_orders).
+
+    `active` is a soft-delete/archive flag (Odoo-style convention), separate
+    from `is_synced` (planning opt-in) — an archived row is hidden from the
+    default list and can't be re-referenced, but isn't hard-deleted (see
+    DECISIONS.md "Archive instead of delete for referenced sync/fleet rows").
     """
 
     __tablename__ = "synced_operation_types"
@@ -25,6 +30,7 @@ class SyncedOperationType(Base):
     code: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     warehouse_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_synced: Mapped[bool] = mapped_column(default=False, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

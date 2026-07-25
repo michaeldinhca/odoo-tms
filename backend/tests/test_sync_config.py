@@ -1,10 +1,13 @@
 import uuid
 
+from app.models.synced_operation_type import SyncedOperationType
 from app.services.sync_config import (
     fetch_operation_types,
     fetch_warehouses,
     get_synced_operation_type_ids,
     get_warehouse_by_picking_type,
+    preview_operation_types,
+    preview_warehouses,
     upsert_operation_types,
     upsert_warehouses,
 )
@@ -156,6 +159,44 @@ def test_upsert_warehouses_preserves_existing_sync_toggle_on_refresh(sync_db_ses
 
     assert rows_after[0].is_synced is True  # not reset
     assert rows_after[0].city == "Mississauga"  # still updated
+
+
+# --- preview_* (dry-run diff, DB-only, no writes) ---
+
+
+def test_preview_operation_types_reports_new_and_removed(sync_db_session):
+    upsert_operation_types(
+        sync_db_session,
+        TENANT_ID,
+        [_operation_type(10, "Delivery Orders"), _operation_type(11, "Receipts", code="incoming")],
+    )
+
+    # Odoo now only has #10 (renamed) plus a brand-new #20; #11 is gone.
+    fetched = [_operation_type(10, "Delivery Orders (renamed)"), _operation_type(20, "Returns")]
+    diff = preview_operation_types(sync_db_session, TENANT_ID, fetched)
+
+    assert [item["odoo_operation_type_id"] for item in diff["new"]] == [20]
+    assert [item["odoo_operation_type_id"] for item in diff["removed"]] == [11]
+    assert diff["unchanged_count"] == 1
+
+    # Still a dry run — the stored rows are untouched (name not renamed,
+    # #11 not deleted, #20 not created).
+    stored_names = {
+        row.name
+        for row in sync_db_session.query(SyncedOperationType).filter_by(tenant_id=TENANT_ID)
+    }
+    assert stored_names == {"Delivery Orders", "Receipts"}
+
+
+def test_preview_warehouses_reports_new_and_removed(sync_db_session):
+    upsert_warehouses(sync_db_session, TENANT_ID, [_warehouse(odoo_id=1, name="Main WH")])
+
+    fetched = [_warehouse(odoo_id=2, name="Second WH")]
+    diff = preview_warehouses(sync_db_session, TENANT_ID, fetched)
+
+    assert [item["odoo_warehouse_id"] for item in diff["new"]] == [2]
+    assert [item["odoo_warehouse_id"] for item in diff["removed"]] == [1]
+    assert diff["unchanged_count"] == 0
 
 
 # --- planning-side lookup helpers ---

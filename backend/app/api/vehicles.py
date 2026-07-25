@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_current_user, get_db
 from app.models.driver import Driver
-from app.models.odoo_credential import TenantOdooCredential
 from app.models.vehicle import Vehicle
 from app.schemas.fleet import (
     OdooFleetVehicleList,
@@ -20,6 +19,7 @@ from app.services.fleet_link_sync import sync_link_staleness
 from app.services.fleet_lookup import fetch_fleet_vehicles
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
+from app.services.odoo_credential_gate import require_active_instance
 
 router = APIRouter(prefix="/tenants/{tenant_id}/vehicles", tags=["vehicles"])
 
@@ -43,6 +43,7 @@ def list_vehicles(
     tenant_id: uuid.UUID,
     status_filter: VehicleStatus | None = None,
     home_warehouse_id: uuid.UUID | None = None,
+    include_archived: bool = False,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> list[Vehicle]:
@@ -52,6 +53,8 @@ def list_vehicles(
         query = query.filter(Vehicle.status == status_filter)
     if home_warehouse_id is not None:
         query = query.filter(Vehicle.home_warehouse_id == home_warehouse_id)
+    if not include_archived:
+        query = query.filter(Vehicle.active.is_(True))
     return query.order_by(Vehicle.name).all()
 
 
@@ -76,15 +79,10 @@ def list_odoo_fleet_vehicles(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OdooFleetVehicleList:
-    """Browse-only — never auto-creates local vehicles from this list."""
+    """Browse-only — never auto-creates local vehicles from this list.
+    Requires an active connection, same as any other Odoo-reaching call."""
     _require_same_tenant(tenant_id, current_user)
-    credential = (
-        db.query(TenantOdooCredential).filter(TenantOdooCredential.tenant_id == tenant_id).first()
-    )
-    if credential is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="No Odoo connection configured"
-        )
+    credential = require_active_instance(db, tenant_id)
 
     client = build_client(credential)
     try:
@@ -149,7 +147,10 @@ def delete_vehicle(
     if referencing_driver is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Vehicle is assigned to driver '{referencing_driver.name}'; unassign it first",
+            detail=(
+                f"Vehicle is assigned to driver '{referencing_driver.name}'; unassign it first, "
+                "or archive this vehicle instead of deleting it"
+            ),
         )
 
     db.delete(vehicle)
@@ -165,8 +166,12 @@ def link_vehicle_to_odoo(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> Vehicle:
     """Sets the Odoo cross-reference only — never touches any other field on
-    the local vehicle (see DECISIONS.md)."""
+    the local vehicle (see DECISIONS.md). Requires an active connection,
+    since a fresh link should be tied to a live, confirmed Odoo instance;
+    unlinking (below) has no such requirement — it's a pure local-state
+    removal, always safe."""
     _require_same_tenant(tenant_id, current_user)
+    require_active_instance(db, tenant_id)
     vehicle = _get_vehicle_or_404(db, tenant_id, vehicle_id)
     vehicle.odoo_fleet_vehicle_id = payload.odoo_fleet_vehicle_id
     vehicle.odoo_link_status = "linked"

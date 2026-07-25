@@ -17,6 +17,7 @@ import type {
   FleetVehicle,
   OdooEmployeeOption,
 } from "../api/types";
+import { useOdooInstance } from "../context/OdooInstanceContext";
 
 const EMPTY_FORM: DriverInput = {
   name: "",
@@ -30,8 +31,10 @@ const EMPTY_FORM: DriverInput = {
 
 export default function DriversPage() {
   const tenantId = getTenantId();
+  const { isActive } = useOdooInstance();
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [form, setForm] = useState<DriverInput>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +44,17 @@ export default function DriversPage() {
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [selectedOdooId, setSelectedOdooId] = useState<string>("");
 
+  function loadDrivers() {
+    if (!tenantId) return;
+    listDrivers(tenantId, showArchived).then(setDrivers).catch(() => {});
+  }
+
+  useEffect(loadDrivers, [tenantId, showArchived]);
+
   useEffect(() => {
     if (!tenantId) return;
-    listDrivers(tenantId).then(setDrivers).catch(() => {});
+    // Only active vehicles are offered for assignment — an archived vehicle
+    // shouldn't be pickable for a new driver.
     listVehicles(tenantId).then(setVehicles).catch(() => {});
   }, [tenantId]);
 
@@ -142,6 +153,16 @@ export default function DriversPage() {
     }
   }
 
+  async function handleArchiveToggle(driver: Driver) {
+    setError(null);
+    try {
+      await updateDriver(tenantId!, driver.id, { active: !driver.active });
+      loadDrivers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update archive state");
+    }
+  }
+
   return (
     <div className="page">
       <h1>Drivers</h1>
@@ -213,6 +234,17 @@ export default function DriversPage() {
         </div>
       </form>
 
+      <div className="actions">
+        <label>
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />{" "}
+          Show archived
+        </label>
+      </div>
+
       <table className="route-table">
         <thead>
           <tr>
@@ -239,6 +271,8 @@ export default function DriversPage() {
                       Unlink
                     </button>
                   </>
+                ) : !isActive ? (
+                  <span className="hint">Connect Odoo to link drivers.</span>
                 ) : linkingId === driver.id ? (
                   odooEmployees && !odooAvailable ? (
                     <span className="hint">HR module not available on this Odoo instance.</span>
@@ -273,6 +307,9 @@ export default function DriversPage() {
               <td>
                 <button type="button" onClick={() => handleEdit(driver)}>
                   Edit
+                </button>
+                <button type="button" onClick={() => handleArchiveToggle(driver)}>
+                  {driver.active ? "Archive" : "Unarchive"}
                 </button>
                 <button type="button" onClick={() => handleDelete(driver)}>
                   Delete

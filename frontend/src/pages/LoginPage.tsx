@@ -1,9 +1,11 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login, saveSession } from "../api/client";
+import { useOdooInstance } from "../context/OdooInstanceContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { refetch } = useOdooInstance();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -17,6 +19,7 @@ export default function LoginPage() {
     try {
       const { access_token } = await login(email, password);
       saveSession(access_token);
+      refetch();
       navigate("/planning");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

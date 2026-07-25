@@ -172,6 +172,49 @@ def upsert_warehouses(
     )
 
 
+def preview_operation_types(db: Session, tenant_id: uuid.UUID, fetched: list[dict]) -> dict:
+    """Dry-run diff against what's currently stored — writes nothing. Used to
+    show "N new, M no longer in Odoo" before a resync is confirmed."""
+    existing = db.query(SyncedOperationType).filter_by(tenant_id=tenant_id).all()
+    existing_ids = {row.odoo_operation_type_id for row in existing}
+    fetched_ids = {item["odoo_operation_type_id"] for item in fetched}
+
+    new_items = [item for item in fetched if item["odoo_operation_type_id"] not in existing_ids]
+    removed_items = [
+        {
+            "odoo_operation_type_id": row.odoo_operation_type_id,
+            "name": row.name,
+            "code": row.code,
+        }
+        for row in existing
+        if row.odoo_operation_type_id not in fetched_ids
+    ]
+    return {
+        "new": new_items,
+        "removed": removed_items,
+        "unchanged_count": len(fetched_ids & existing_ids),
+    }
+
+
+def preview_warehouses(db: Session, tenant_id: uuid.UUID, fetched: list[dict]) -> dict:
+    """Same idea as preview_operation_types, for warehouses."""
+    existing = db.query(SyncedWarehouse).filter_by(tenant_id=tenant_id).all()
+    existing_ids = {row.odoo_warehouse_id for row in existing}
+    fetched_ids = {item["odoo_warehouse_id"] for item in fetched}
+
+    new_items = [item for item in fetched if item["odoo_warehouse_id"] not in existing_ids]
+    removed_items = [
+        {"odoo_warehouse_id": row.odoo_warehouse_id, "name": row.name, "code": row.code}
+        for row in existing
+        if row.odoo_warehouse_id not in fetched_ids
+    ]
+    return {
+        "new": new_items,
+        "removed": removed_items,
+        "unchanged_count": len(fetched_ids & existing_ids),
+    }
+
+
 def get_synced_operation_type_ids(db: Session, tenant_id: uuid.UUID) -> set[int]:
     """The set of Odoo picking_type ids the tenant has opted into syncing."""
     rows = (

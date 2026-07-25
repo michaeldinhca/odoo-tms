@@ -75,6 +75,25 @@ gets done.
       — confirmed by the full existing test suite passing unmodified)
 - [x] Session lifetime extended `JWT_EXPIRE_MINUTES` 60 → 10080 (7 days —
       see DECISIONS.md); fixed the real bug this was masking (see Frontend)
+- [x] Odoo connection state machine (`draft`/`active`/`error`) added to
+      `tenant_odoo_credentials` — company selection (even "All companies")
+      is the action that activates a draft connection; a new
+      `POST .../credentials/reauthenticate` endpoint does the same field
+      update as initial setup but only once active (see DECISIONS.md)
+- [x] `require_active_instance()` gate applied to every Odoo-talking
+      endpoint (Operation Types/Warehouses refresh+preview, Vehicle/Driver
+      Odoo browse + link) — Vehicle/Driver core CRUD and unlink deliberately
+      NOT gated, per the existing "locally-owned" decision (see DECISIONS.md)
+- [x] Resync split into preview (dry-run diff, `{new, removed,
+      unchanged_count}`, writes nothing) and confirm (the existing
+      upsert-based refresh) for both Operation Types and Warehouses
+- [x] `active` archive/soft-delete flag added to SyncedOperationType,
+      SyncedWarehouse, Vehicle, Driver — new archive-toggle endpoints for
+      the first two, reused the existing generic update endpoint for the
+      other two; new `include_archived` list filter on all four; new
+      DELETE endpoints for Operation Types/Warehouses (didn't exist before)
+      that block with an "archive instead" message when referenced (see
+      DECISIONS.md)
 
 ## Frontend
 
@@ -93,6 +112,19 @@ gets done.
 - [x] Drivers screen: list + create/edit form + Odoo hr.employee link picker
 - [x] Connection page shows detected Odoo version ("Connected — Odoo 17.0")
       and a warning when a version change was detected on the last check
+- [x] Connection page reworked into an explicit staged flow: credentials +
+      Test → Save (draft) → Load companies → select → Activate; once
+      active, the credentials form is replaced by a connection summary +
+      a distinct "Re-authenticate" action
+- [x] Operation Types/Warehouses pages gated behind an active connection
+      (with a link to the Connection page); "Resync List" now shows a
+      preview (new/removed/unchanged counts) before a "Confirm" write;
+      "Show archived" toggle + per-row Archive/Unarchive + Delete
+- [x] Vehicles/Drivers pages: core CRUD always available regardless of
+      connection state; "Link to Odoo" section shows an inline "connect
+      Odoo" note instead of the picker when not active; "Show archived"
+      toggle + Archive action; Drivers' "Assigned vehicle" dropdown only
+      offers active (non-archived) vehicles
 - [x] Fixed a real bug: an expired session (JWT) wasn't detected anywhere —
       `RequireAuth` only checked token *presence*, and every data-loading
       page's `.catch(() => {})` swallowed the resulting 401 identically to
@@ -148,9 +180,29 @@ gets done.
       full planning run both re-verified working end-to-end through the new
       field-resolution wiring (not just passing in isolation against a fake
       client)
+- [x] Connection state machine + archive/delete-guard refactor verified
+      against the same real instance: the migration's backward-compat step
+      correctly auto-activated the existing connection; preview correctly
+      diffed real operation-type/warehouse data; confirm-refresh updated
+      `last_synced_operation_types_at`/`last_synced_warehouses_at`;
+      archive/unarchive round-tripped through `include_archived` list
+      filtering; the warehouse delete guard blocked deleting a warehouse
+      referenced by a live-created vehicle, then cleaned up correctly; and
+      `reauthenticate` succeeded with the real API key, confirmed still
+      working via a follow-up `test_connection` call. Frontend build (tsc +
+      vite) and lint both clean, but no interactive browser click-through
+      was performed in this environment — no browser automation tool was
+      available, so the UI itself (as opposed to the API it calls) is
+      unverified beyond the type-checked build
 
 ## Next up
 
+- [ ] `app/services/planning/runner.py::fetch_vehicles` still pulls
+      `fleet.vehicle` directly from Odoo on every planning run — it does
+      not use the local `vehicles` table at all. Discovered while building
+      the archive/delete-guard feature: means "referenced by a planning
+      run" doesn't actually apply to the local `Vehicle` entity today (see
+      DECISIONS.md "Archive instead of hard delete")
 - [ ] No refresh-token mechanism — at 7 days, a session still eventually
       hard-expires and the user must log in again from scratch. Fine for
       now; revisit if 7 days turns out to be too short in practice
