@@ -180,9 +180,25 @@ gets done.
       `components/ui/Card.tsx` now forwards its ref to support this.
       Capacity bars update automatically since they already derive from
       vehicle contents — confirmed, no new capacity logic needed.
+- [x] Load Planning board: cluster-header drag (moves every picking in a
+      compass-direction group at once, resolved from the clustered data
+      rather than the rendered/collapsed DOM) and multi-select drag
+      (checkbox toggles selection; plain click replaces it with just
+      that card; ctrl/cmd-click toggles like the checkbox — documented
+      in design.md since the task asked for an unambiguous model).
+      `MOVE_ITEMS` needed no reducer-shape change (it already took
+      `pickingIds: string[]`); a drag now resolves to the cluster's full
+      membership, the active selection (if the dragged card is part of
+      it), or just that one card, computed once in `onDragStart` and
+      reused for both the "N items" `DragOverlay` badge and the eventual
+      dispatch. A successful move always clears `selectedIds` as part of
+      the same state update. Selected-card highlight
+      (`border-accent bg-accent/5`) is deliberately not the same
+      `ring-2 ring-accent` used for a droppable's drag-over state, per
+      the task's "distinct from drag-over" requirement.
 - [ ] Load Planning board: within-vehicle reorder (`@dnd-kit/sortable`),
-      real API data instead of fixtures, working multi-select, capacity
-      validation/blocking, backend persistence
+      real API data instead of fixtures, capacity validation/blocking,
+      backend persistence, shift-click range-select
 
 ## Infra
 

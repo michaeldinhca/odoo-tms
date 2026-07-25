@@ -192,6 +192,51 @@ no capacity-overfill blocking, no backend persistence. See DECISIONS.md
 if a future reordering phase adds new architectural choices worth
 logging there.
 
+**Cluster-drag and multi-select (2026-07-25, follow-up):** `MOVE_ITEMS`
+already took `pickingIds: string[]`, so no reducer-shape change was
+needed to generalize beyond a single card — only the drag handlers
+needed to resolve a bigger array in more cases.
+
+- Each compass-direction cluster header in `UnassignedPanel` has its own
+  small drag handle (`ClusterDragHandle`, a six-dot grip glyph),
+  separate from the header's existing collapse/expand button — dragging
+  it carries every id in `cluster.items` (from `clusterDestinations`'s
+  *output*, i.e. the underlying data), so a collapsed cluster still
+  drags its full membership correctly.
+- **Selection interaction model** (documented here since the task asked
+  for it to be unambiguous): a checkbox on each card toggles that card's
+  membership in `selectedIds` without touching the rest of the
+  selection; a plain click anywhere else on the card *replaces* the
+  selection with just that card; ctrl/cmd-click on the card body toggles
+  it the same way the checkbox does. This mirrors the common
+  file-manager convention (checkbox = toggle, click = select-only-this,
+  modifier-click = toggle) and was chosen over picking a single
+  mechanism because the board is explicitly a desktop-and-tablet tool —
+  ctrl/cmd-click doesn't exist on touch, so the checkbox is the
+  affordance that always works. Shift-click range-select was skipped as
+  the task allowed.
+- Selected cards get `border-accent bg-accent/5` — deliberately not a
+  ring, since `ring-2 ring-accent` is already the *droppable-container*
+  "drag over" indicator (on the panel/vehicle `Card`), and the task
+  asked for the two states to read as visually distinct. Card-level
+  selection styling swaps the border/background classes outright
+  (`isSelected ? "border-accent bg-accent/5" : "border-border bg-surface
+  hover:bg-bg"`) rather than layering a conditional class on top of the
+  row's own base classes, for the same Tailwind-without-`tailwind-merge`
+  override-order reason `Card`'s drag-over ring avoids stacking
+  `border-*`/`bg-*` utilities (see above).
+- Dragging a card that's part of the current selection carries the
+  whole selection; dragging one that isn't carries just itself (stale
+  selections elsewhere are ignored) — resolved once in `onDragStart` and
+  reused for both the `DragOverlay` content and the eventual dispatch.
+  `DragOverlay` shows a `Badge`-based "N items" preview instead of a
+  single card whenever more than one id is being dragged (cluster *or*
+  multi-select).
+- A successful `MOVE_ITEMS` now always clears `selectedIds` as part of
+  the same state update, not a second dispatch — simpler than requiring
+  every call site to remember to clear it, and there's no case where
+  leaving a stale selection after a move would be desirable.
+
 ## Decisions log
 
 ### 2026-07-25 — Adopt Tailwind CSS v4, no component library; cool-neutral/blue-accent direction

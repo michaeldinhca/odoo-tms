@@ -42,12 +42,22 @@ export interface BoardState {
 export const UNASSIGNED_CONTAINER_ID = "unassigned";
 
 export type BoardAction =
-  | { type: "SELECT_ITEM"; pickingId: string }
+  | {
+      type: "SELECT_ITEM";
+      pickingId: string;
+      /** "replace" = select only this id, clearing any other selection
+       * (plain click on a card). "toggle" = add/remove just this id,
+       * leaving the rest of the selection alone (checkbox, or
+       * ctrl/cmd-click on a card). See UnassignedPanel/VehicleCard for
+       * where each mode is actually wired up. */
+      mode: "replace" | "toggle";
+    }
   | {
       type: "MOVE_ITEMS";
-      /** Always a single-element array in the drag-and-drop phase — kept
-       * as an array so a later multi-select phase can move several
-       * pickings in one dispatch without a new action type. */
+      /** A single-element array for an individual card drag, the full
+       * membership of a cluster for a cluster-header drag, or the
+       * current `selectedIds` for a multi-select drag — one action
+       * shape covers all three. */
       pickingIds: string[];
       destinationContainerId: string;
     };

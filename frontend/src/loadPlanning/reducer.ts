@@ -58,14 +58,31 @@ function moveItems(
     ];
   }
 
-  return { ...state, unassigned: nextUnassigned, vehicles: nextVehicles };
+  // Any successful move — single card, whole cluster, or multi-select —
+  // ends the interaction, so the selection is cleared here rather than
+  // requiring every call site to remember a separate dispatch.
+  return {
+    ...state,
+    unassigned: nextUnassigned,
+    vehicles: nextVehicles,
+    selectedIds: new Set(),
+  };
+}
+
+function selectItem(state: BoardState, pickingId: string, mode: "replace" | "toggle"): BoardState {
+  if (mode === "replace") {
+    return { ...state, selectedIds: new Set([pickingId]) };
+  }
+  const next = new Set(state.selectedIds);
+  if (next.has(pickingId)) next.delete(pickingId);
+  else next.add(pickingId);
+  return { ...state, selectedIds: next };
 }
 
 export function boardReducer(state: BoardState, action: BoardAction): BoardState {
   switch (action.type) {
     case "SELECT_ITEM":
-      // Stubbed — multi-select interaction lands in a later phase.
-      return state;
+      return selectItem(state, action.pickingId, action.mode);
     case "MOVE_ITEMS":
       return moveItems(state, action.pickingIds, action.destinationContainerId);
     default:
