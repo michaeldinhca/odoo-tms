@@ -6,6 +6,7 @@ import { useOdooInstance } from "../context/OdooInstanceContext";
 
 const LINKS = [
   { to: "/planning", label: "Run Planning" },
+  { to: "/load-planning", label: "Load Planning" },
   { to: "/connection", label: "Odoo Connection" },
   { to: "/operation-types", label: "Operation Types" },
   { to: "/warehouses", label: "Warehouses" },

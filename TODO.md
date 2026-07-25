@@ -148,6 +148,23 @@ gets done.
       CapacityBar, Table) — the old hand-rolled `index.css` classes are
       gone. Planner results table is no longer "functional, not styled"
       (see the "Results view" entry above)
+- [x] Load Planning board — static/read-only layout (`/load-planning`):
+      `useReducer`-backed `BoardState` (unassigned pickings, per-vehicle
+      FILO assignment lists, a stubbed `selectedIds` for a future
+      multi-select phase); left panel groups unassigned pickings into
+      collapsible sections by compass direction with a new
+      `frontend/src/lib/clustering.ts` utility (distance/bearing/compass/
+      cluster — ported the haversine formula from
+      `backend/app/services/planning/haversine.py` for consistency, since
+      no such utility existed on the frontend yet); right side is one
+      `VehicleCard` per vehicle with two `CapacityBar`s (weight, volume)
+      and a numbered FILO stop list; mock data lives in
+      `frontend/src/loadPlanning/fixtures.ts`, swappable for a real API
+      call later without touching the panels. No drag-and-drop yet — see
+      TODO below.
+- [ ] Load Planning board: drag-and-drop (dnd-kit), real reorder/
+      reassign actions on the reducer, real API data instead of fixtures,
+      working multi-select
 
 ## Infra
 

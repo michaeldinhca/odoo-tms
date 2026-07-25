@@ -4,6 +4,7 @@ import RequireAuth from "./components/RequireAuth";
 import { OdooInstanceProvider } from "./context/OdooInstanceContext";
 import ConnectionPage from "./pages/ConnectionPage";
 import DriversPage from "./pages/DriversPage";
+import LoadPlanningPage from "./pages/LoadPlanningPage";
 import LoginPage from "./pages/LoginPage";
 import OperationTypesPage from "./pages/OperationTypesPage";
 import PlanningPage from "./pages/PlanningPage";
@@ -61,6 +62,14 @@ export default function App() {
           element={
             <RequireAuth>
               <PlanningPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/load-planning"
+          element={
+            <RequireAuth>
+              <LoadPlanningPage />
             </RequireAuth>
           }
         />

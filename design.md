@@ -101,7 +101,7 @@ One radius token, one shadow token, used everywhere without exception:
 | `Select` | `Select.tsx` | Same `label` pattern as `Input`. |
 | `Card` | `Card.tsx` | Optional `heading` prop (named to avoid colliding with the native `title` HTML attribute). Basis for panels now; will be the basis for vehicle boxes/cluster groups in a later phase. |
 | `Badge` | `Badge.tsx` | `variant`: `neutral` / `accent` / `ok` / `warning` / `full`. Used for connection state, sync/link status, and vehicle/driver status today. |
-| `CapacityBar` | `CapacityBar.tsx` | Takes `value`/`max` (any shared unit), computes a 0–100% fill and picks `ok`/`warning`/`full` at 85%/100% thresholds. Real `role="progressbar"` semantics. **Not yet used on any current screen** — none of today's API responses carry a capacity number to visualize. It exists now so the load-planner phase (explicitly out of scope here) has it ready. |
+| `CapacityBar` | `CapacityBar.tsx` | Takes `value`/`max` (any shared unit), computes a 0–100% fill and picks `ok`/`warning`/`full` at 85%/100% thresholds. Real `role="progressbar"` semantics. Used on the Load Planning page's vehicle cards (`frontend/src/loadPlanning/VehicleCard.tsx`) — one bar for weight, one for volume, since a vehicle can be full on one axis and empty on the other. |
 | `Table` / `TableHead` / `TableBody` / `TableRow` / `Th` / `Td` | `Table.tsx` | Composable primitives mirroring plain HTML table structure, not one generic data-grid — there's no sorting/virtualization need yet. Used for every table in the app today (Operation Types, Warehouses, Vehicles, Drivers, Planning results) and will be the basis for the dense unassigned-pickings list later. |
 | `cn` | `cn.ts` | Zero-dependency `classes.filter(Boolean).join(" ")` helper — the only "utility" pulled in for className composition (no `clsx`/`cva`). |
 
@@ -153,10 +153,22 @@ was made against that brief specifically:
   clean, plus a manually computed WCAG contrast check for every color
   pairing above (see the table). The actual rendered UI has not been
   visually confirmed in a browser.
-- `CapacityBar` has no live usage yet (see the component table above) —
-  there's no capacity data in any current API response to drive it.
 - No drag-and-drop, vehicle-box layout, clustering UI, or state
   management — explicitly out of scope for this pass.
+
+## Load planning board (2026-07-25)
+
+The Load Planning page (`frontend/src/pages/LoadPlanningPage.tsx`,
+`/load-planning`) is the first consumer of `CapacityBar` and the first
+non-trivial `useReducer`-backed page. Its supporting code lives in
+`frontend/src/loadPlanning/` (`types.ts`, `reducer.ts`, `fixtures.ts`,
+`UnassignedPanel.tsx`, `VehicleCard.tsx`) and `frontend/src/lib/
+clustering.ts` (`getDistanceKm`/`getBearing`/`getCompassDirection`/
+`clusterDestinations` — pure geo math, no React/domain coupling, ported
+from `backend/app/services/planning/haversine.py`'s formula so on-screen
+distances agree with the backend's). This phase is the static/read-only
+layout only — see `DECISIONS.md` if a drag-and-drop phase adds new
+architectural choices worth logging there.
 
 ## Decisions log
 
