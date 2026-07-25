@@ -17,6 +17,20 @@ import type {
   FleetVehicle,
   OdooEmployeeOption,
 } from "../api/types";
+import {
+  Badge,
+  type BadgeVariant,
+  Button,
+  Card,
+  Input,
+  Select,
+  Table,
+  TableBody,
+  TableHead,
+  TableRow,
+  Td,
+  Th,
+} from "../components/ui";
 import { useOdooInstance } from "../context/OdooInstanceContext";
 
 const EMPTY_FORM: DriverInput = {
@@ -27,6 +41,12 @@ const EMPTY_FORM: DriverInput = {
   id_passport_number: "",
   status: "active",
   assigned_vehicle_id: null,
+};
+
+const STATUS_BADGE: Record<DriverStatus, BadgeVariant> = {
+  active: "ok",
+  locked: "warning",
+  inactive: "neutral",
 };
 
 export default function DriversPage() {
@@ -58,7 +78,7 @@ export default function DriversPage() {
     listVehicles(tenantId).then(setVehicles).catch(() => {});
   }, [tenantId]);
 
-  if (!tenantId) return <p className="page">Not logged in.</p>;
+  if (!tenantId) return <p className="p-6 text-text">Not logged in.</p>;
 
   function vehicleName(id: string | null): string {
     if (!id) return "—";
@@ -164,161 +184,164 @@ export default function DriversPage() {
   }
 
   return (
-    <div className="page">
-      <h1>Drivers</h1>
-      <p className="hint">
+    <div className="mx-auto max-w-5xl p-6">
+      <h1 className="mb-2 text-2xl font-semibold text-text">Drivers</h1>
+      <p className="mb-4 text-sm text-text-muted">
         Drivers live here, not in Odoo. Linking to an Odoo hr.employee is just a reference
         pointer and never overwrites the fields below.
       </p>
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        </label>
-        <label>
-          Phone
-          <input
-            value={form.phone ?? ""}
-            onChange={(e) => setForm({ ...form, phone: e.target.value || null })}
-          />
-        </label>
-        <label>
-          Email
-          <input
-            type="email"
-            value={form.email ?? ""}
-            onChange={(e) => setForm({ ...form, email: e.target.value || null })}
-          />
-        </label>
-        <label>
-          License number
-          <input
-            value={form.license_number ?? ""}
-            onChange={(e) => setForm({ ...form, license_number: e.target.value || null })}
-          />
-        </label>
-        <label>
-          Assigned vehicle
-          <select
-            value={form.assigned_vehicle_id ?? ""}
-            onChange={(e) => setForm({ ...form, assigned_vehicle_id: e.target.value || null })}
-          >
-            <option value="">None</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Status
-          <select
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value as DriverStatus })}
-          >
-            <option value="active">Active</option>
-            <option value="locked">Locked</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="actions">
-          <button type="submit">{editingId ? "Save changes" : "Add driver"}</button>
-          {editingId && (
-            <button type="button" onClick={handleCancelEdit}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card className="mb-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Input
+              label="Name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              required
+            />
+            <Input
+              label="Phone"
+              value={form.phone ?? ""}
+              onChange={(e) => setForm({ ...form, phone: e.target.value || null })}
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={form.email ?? ""}
+              onChange={(e) => setForm({ ...form, email: e.target.value || null })}
+            />
+            <Input
+              label="License number"
+              value={form.license_number ?? ""}
+              onChange={(e) => setForm({ ...form, license_number: e.target.value || null })}
+            />
+            <Select
+              label="Assigned vehicle"
+              value={form.assigned_vehicle_id ?? ""}
+              onChange={(e) => setForm({ ...form, assigned_vehicle_id: e.target.value || null })}
+            >
+              <option value="">None</option>
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value as DriverStatus })}
+            >
+              <option value="active">Active</option>
+              <option value="locked">Locked</option>
+              <option value="inactive">Inactive</option>
+            </Select>
+          </div>
+          {error && <p className="text-sm text-status-full">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="submit">{editingId ? "Save changes" : "Add driver"}</Button>
+            {editingId && (
+              <Button type="button" variant="secondary" onClick={handleCancelEdit}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
 
-      <div className="actions">
-        <label>
+      <div className="mb-4">
+        <label className="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
             checked={showArchived}
             onChange={(e) => setShowArchived(e.target.checked)}
-          />{" "}
+            className="h-4 w-4 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
           Show archived
         </label>
       </div>
 
-      <table className="route-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Phone</th>
-            <th>Assigned vehicle</th>
-            <th>Odoo link</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <Th>Name</Th>
+            <Th>Status</Th>
+            <Th>Phone</Th>
+            <Th>Assigned vehicle</Th>
+            <Th>Odoo link</Th>
+            <Th>Actions</Th>
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {drivers.map((driver) => (
-            <tr key={driver.id}>
-              <td>{driver.name}</td>
-              <td>{driver.status}</td>
-              <td>{driver.phone ?? "—"}</td>
-              <td>{vehicleName(driver.assigned_vehicle_id)}</td>
-              <td>
+            <TableRow key={driver.id}>
+              <Td className="font-medium">{driver.name}</Td>
+              <Td>
+                <Badge variant={STATUS_BADGE[driver.status]}>{driver.status}</Badge>
+              </Td>
+              <Td>{driver.phone ?? "—"}</Td>
+              <Td>{vehicleName(driver.assigned_vehicle_id)}</Td>
+              <Td>
                 {driver.odoo_link_status === "linked" ? (
-                  <>
-                    Linked — {odooEmployeeName(driver.odoo_employee_id)}
-                    <button type="button" onClick={() => handleUnlink(driver)}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="accent">Linked — {odooEmployeeName(driver.odoo_employee_id)}</Badge>
+                    <Button size="sm" variant="secondary" onClick={() => handleUnlink(driver)}>
                       Unlink
-                    </button>
-                  </>
+                    </Button>
+                  </div>
                 ) : !isActive ? (
-                  <span className="hint">Connect Odoo to link drivers.</span>
+                  <span className="text-sm text-text-muted">Connect Odoo to link drivers.</span>
                 ) : linkingId === driver.id ? (
                   odooEmployees && !odooAvailable ? (
-                    <span className="hint">HR module not available on this Odoo instance.</span>
+                    <span className="text-sm text-text-muted">
+                      HR module not available on this Odoo instance.
+                    </span>
                   ) : (
-                    <>
-                      <select value={selectedOdooId} onChange={(e) => setSelectedOdooId(e.target.value)}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={selectedOdooId} onChange={(e) => setSelectedOdooId(e.target.value)}>
                         <option value="">Choose...</option>
                         {(odooEmployees ?? []).map((e) => (
                           <option key={e.id} value={e.id}>
                             {e.name}
                           </option>
                         ))}
-                      </select>
-                      <button
-                        type="button"
+                      </Select>
+                      <Button
+                        size="sm"
                         onClick={() => handleConfirmLink(driver)}
                         disabled={!selectedOdooId}
                       >
                         Confirm
-                      </button>
-                      <button type="button" onClick={() => setLinkingId(null)}>
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setLinkingId(null)}>
                         Cancel
-                      </button>
-                    </>
+                      </Button>
+                    </div>
                   )
                 ) : (
-                  <button type="button" onClick={() => handleStartLink(driver)}>
+                  <Button size="sm" variant="secondary" onClick={() => handleStartLink(driver)}>
                     Link to Odoo Employee
-                  </button>
+                  </Button>
                 )}
-              </td>
-              <td>
-                <button type="button" onClick={() => handleEdit(driver)}>
-                  Edit
-                </button>
-                <button type="button" onClick={() => handleArchiveToggle(driver)}>
-                  {driver.active ? "Archive" : "Unarchive"}
-                </button>
-                <button type="button" onClick={() => handleDelete(driver)}>
-                  Delete
-                </button>
-              </td>
-            </tr>
+              </Td>
+              <Td>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => handleEdit(driver)}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => handleArchiveToggle(driver)}>
+                    {driver.active ? "Archive" : "Unarchive"}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => handleDelete(driver)}>
+                    Delete
+                  </Button>
+                </div>
+              </Td>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

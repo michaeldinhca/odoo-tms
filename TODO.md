@@ -139,6 +139,15 @@ gets done.
       Odoo API key the user reported as "invalid" connected successfully
       once a valid session was used — confirming it was never actually a
       credential problem
+- [x] Tailwind CSS v4 adopted as the styling approach (no component
+      library — see [design.md](design.md) for the full token/component
+      reference); every existing screen (Login, Connection, Operation
+      Types, Warehouses, Vehicles, Drivers, Planning, NavBar) restyled
+      onto seven hand-built base components
+      (`frontend/src/components/ui/`: Button, Input, Select, Card, Badge,
+      CapacityBar, Table) — the old hand-rolled `index.css` classes are
+      gone. Planner results table is no longer "functional, not styled"
+      (see the "Results view" entry above)
 
 ## Infra
 

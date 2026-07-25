@@ -10,6 +10,7 @@ import {
   setOperationTypeSync,
 } from "../api/client";
 import type { OperationType, OperationTypeRefreshPreview } from "../api/types";
+import { Button, Card, Table, TableBody, TableHead, TableRow, Td, Th } from "../components/ui";
 import { useOdooInstance } from "../context/OdooInstanceContext";
 
 export default function OperationTypesPage() {
@@ -34,15 +35,21 @@ export default function OperationTypesPage() {
 
   useEffect(load, [tenantId, showArchived]);
 
-  if (!tenantId) return <p className="page">Not logged in.</p>;
+  if (!tenantId) return <p className="p-6 text-text">Not logged in.</p>;
 
   if (!instanceLoading && !isActive) {
     return (
-      <div className="page">
-        <h1>Operation types</h1>
-        <p className="hint">
+      <div className="mx-auto max-w-3xl p-6">
+        <h1 className="mb-2 text-2xl font-semibold text-text">Operation types</h1>
+        <p className="text-sm text-text-muted">
           Connect and activate an Odoo instance first — see the{" "}
-          <Link to="/connection">Odoo connection</Link> page.
+          <Link
+            to="/connection"
+            className="rounded-sm text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
+            Odoo connection
+          </Link>{" "}
+          page.
         </p>
       </div>
     );
@@ -108,92 +115,100 @@ export default function OperationTypesPage() {
   }
 
   return (
-    <div className="page">
-      <h1>Operation types</h1>
-      <p className="hint">
+    <div className="mx-auto max-w-4xl p-6">
+      <h1 className="mb-2 text-2xl font-semibold text-text">Operation types</h1>
+      <p className="mb-4 text-sm text-text-muted">
         Only pickings whose operation type is checked below get pulled by Run Planning. New
         operation types found in Odoo start unchecked — nothing syncs until you opt in.
       </p>
-      <div className="actions">
-        <button onClick={handlePreview} disabled={previewing || confirming}>
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <Button onClick={handlePreview} disabled={previewing || confirming}>
           {previewing ? "Checking Odoo..." : "Resync List"}
-        </button>
-        <label>
+        </Button>
+        <label className="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
             checked={showArchived}
             onChange={(e) => setShowArchived(e.target.checked)}
-          />{" "}
+            className="h-4 w-4 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
           Show archived
         </label>
       </div>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="mb-4 text-sm text-status-full">{error}</p>}
 
       {preview && (
-        <div className="preview-panel">
-          <p>
-            <strong>{preview.new.length}</strong> new,{" "}
-            <strong>{preview.removed.length}</strong> no longer in Odoo,{" "}
+        <Card className="mb-4 flex flex-col gap-2">
+          <p className="text-sm text-text">
+            <strong className="font-medium">{preview.new.length}</strong> new,{" "}
+            <strong className="font-medium">{preview.removed.length}</strong> no longer in Odoo,{" "}
             {preview.unchanged_count} unchanged.
           </p>
           {preview.new.length > 0 && (
-            <p className="hint">New: {preview.new.map((i) => i.name).join(", ")}</p>
+            <p className="text-sm text-text-muted">New: {preview.new.map((i) => i.name).join(", ")}</p>
           )}
           {preview.removed.length > 0 && (
-            <p className="hint">No longer in Odoo: {preview.removed.map((i) => i.name).join(", ")}</p>
+            <p className="text-sm text-text-muted">
+              No longer in Odoo: {preview.removed.map((i) => i.name).join(", ")}
+            </p>
           )}
-          <div className="actions">
-            <button onClick={handleConfirmResync} disabled={confirming}>
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" onClick={handleConfirmResync} disabled={confirming}>
               {confirming ? "Applying..." : "Confirm"}
-            </button>
-            <button type="button" onClick={() => setPreview(null)}>
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setPreview(null)}>
               Cancel
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {types.length === 0 ? (
-        <p className="hint">No operation types yet — click "Resync List" to pull them from Odoo.</p>
+        <p className="text-sm text-text-muted">
+          No operation types yet — click "Resync List" to pull them from Odoo.
+        </p>
       ) : (
-        <table className="route-table">
-          <thead>
-            <tr>
-              <th>Sync</th>
-              <th>Name</th>
-              <th>Code</th>
-              <th>Warehouse (Odoo id)</th>
-              <th>Last seen</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <Th>Sync</Th>
+              <Th>Name</Th>
+              <Th>Code</Th>
+              <Th>Warehouse (Odoo id)</Th>
+              <Th>Last seen</Th>
+              <Th>Actions</Th>
+            </TableRow>
+          </TableHead>
+          <TableBody>
             {types.map((t) => (
-              <tr key={t.id}>
-                <td>
+              <TableRow key={t.id}>
+                <Td>
                   <input
                     type="checkbox"
                     checked={t.is_synced}
                     onChange={() => handleToggle(t)}
                     aria-label={`Sync ${t.name}`}
+                    className="h-4 w-4 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   />
-                </td>
-                <td>{t.name}</td>
-                <td>{t.code}</td>
-                <td>{t.warehouse_id ?? "—"}</td>
-                <td>{t.last_seen_at ?? "—"}</td>
-                <td>
-                  <button type="button" onClick={() => handleArchiveToggle(t)}>
-                    {t.active ? "Archive" : "Unarchive"}
-                  </button>
-                  <button type="button" onClick={() => handleDelete(t)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
+                </Td>
+                <Td>{t.name}</Td>
+                <Td>{t.code}</Td>
+                <Td>{t.warehouse_id ?? "—"}</Td>
+                <Td className="text-text-muted">{t.last_seen_at ?? "—"}</Td>
+                <Td>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => handleArchiveToggle(t)}>
+                      {t.active ? "Archive" : "Unarchive"}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDelete(t)}>
+                      Delete
+                    </Button>
+                  </div>
+                </Td>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
     </div>
   );

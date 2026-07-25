@@ -18,6 +18,20 @@ import type {
   OdooFleetVehicleOption,
   Warehouse,
 } from "../api/types";
+import {
+  Badge,
+  type BadgeVariant,
+  Button,
+  Card,
+  Input,
+  Select,
+  Table,
+  TableBody,
+  TableHead,
+  TableRow,
+  Td,
+  Th,
+} from "../components/ui";
 import { useOdooInstance } from "../context/OdooInstanceContext";
 
 const EMPTY_FORM: FleetVehicleInput = {
@@ -29,6 +43,12 @@ const EMPTY_FORM: FleetVehicleInput = {
   fuel_consumption_per_100km: null,
   home_warehouse_id: null,
   status: "active",
+};
+
+const STATUS_BADGE: Record<FleetVehicleStatus, BadgeVariant> = {
+  active: "ok",
+  maintenance: "warning",
+  inactive: "neutral",
 };
 
 export default function VehiclesPage() {
@@ -58,7 +78,7 @@ export default function VehiclesPage() {
     listWarehouses(tenantId).then(setWarehouses).catch(() => {});
   }, [tenantId]);
 
-  if (!tenantId) return <p className="page">Not logged in.</p>;
+  if (!tenantId) return <p className="p-6 text-text">Not logged in.</p>;
 
   function warehouseName(id: string | null): string {
     if (!id) return "—";
@@ -165,172 +185,175 @@ export default function VehiclesPage() {
   }
 
   return (
-    <div className="page">
-      <h1>Vehicles</h1>
-      <p className="hint">
+    <div className="mx-auto max-w-5xl p-6">
+      <h1 className="mb-2 text-2xl font-semibold text-text">Vehicles</h1>
+      <p className="mb-4 text-sm text-text-muted">
         Vehicles live here, not in Odoo — a vehicle can exist with no Odoo link at all (e.g. a
         subcontracted truck). Linking to an Odoo fleet.vehicle is just a reference pointer and
         never overwrites the fields below.
       </p>
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        </label>
-        <label>
-          License plate
-          <input
-            value={form.license_plate ?? ""}
-            onChange={(e) => setForm({ ...form, license_plate: e.target.value || null })}
-          />
-        </label>
-        <label>
-          Type
-          <select
-            value={form.vehicle_type}
-            onChange={(e) => setForm({ ...form, vehicle_type: e.target.value as FleetVehicleType })}
-          >
-            <option value="van">Van</option>
-            <option value="truck">Truck</option>
-            <option value="motorbike">Motorbike</option>
-            <option value="three_wheeler">Three-wheeler</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-        <label>
-          Payload capacity (kg)
-          <input
-            type="number"
-            value={form.payload_capacity_kg ?? ""}
-            onChange={(e) =>
-              setForm({ ...form, payload_capacity_kg: e.target.value ? Number(e.target.value) : null })
-            }
-          />
-        </label>
-        <label>
-          Home warehouse
-          <select
-            value={form.home_warehouse_id ?? ""}
-            onChange={(e) => setForm({ ...form, home_warehouse_id: e.target.value || null })}
-          >
-            <option value="">None</option>
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Status
-          <select
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value as FleetVehicleStatus })}
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="maintenance">Maintenance</option>
-          </select>
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="actions">
-          <button type="submit">{editingId ? "Save changes" : "Add vehicle"}</button>
-          {editingId && (
-            <button type="button" onClick={handleCancelEdit}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card className="mb-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Input
+              label="Name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              required
+            />
+            <Input
+              label="License plate"
+              value={form.license_plate ?? ""}
+              onChange={(e) => setForm({ ...form, license_plate: e.target.value || null })}
+            />
+            <Select
+              label="Type"
+              value={form.vehicle_type}
+              onChange={(e) => setForm({ ...form, vehicle_type: e.target.value as FleetVehicleType })}
+            >
+              <option value="van">Van</option>
+              <option value="truck">Truck</option>
+              <option value="motorbike">Motorbike</option>
+              <option value="three_wheeler">Three-wheeler</option>
+              <option value="other">Other</option>
+            </Select>
+            <Input
+              label="Payload capacity (kg)"
+              type="number"
+              value={form.payload_capacity_kg ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, payload_capacity_kg: e.target.value ? Number(e.target.value) : null })
+              }
+            />
+            <Select
+              label="Home warehouse"
+              value={form.home_warehouse_id ?? ""}
+              onChange={(e) => setForm({ ...form, home_warehouse_id: e.target.value || null })}
+            >
+              <option value="">None</option>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value as FleetVehicleStatus })}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="maintenance">Maintenance</option>
+            </Select>
+          </div>
+          {error && <p className="text-sm text-status-full">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="submit">{editingId ? "Save changes" : "Add vehicle"}</Button>
+            {editingId && (
+              <Button type="button" variant="secondary" onClick={handleCancelEdit}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
 
-      <div className="actions">
-        <label>
+      <div className="mb-4">
+        <label className="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
             checked={showArchived}
             onChange={(e) => setShowArchived(e.target.checked)}
-          />{" "}
+            className="h-4 w-4 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
           Show archived
         </label>
       </div>
 
-      <table className="route-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Payload (kg)</th>
-            <th>Home warehouse</th>
-            <th>Odoo link</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <Th>Name</Th>
+            <Th>Type</Th>
+            <Th>Status</Th>
+            <Th>Payload (kg)</Th>
+            <Th>Home warehouse</Th>
+            <Th>Odoo link</Th>
+            <Th>Actions</Th>
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {vehicles.map((vehicle) => (
-            <tr key={vehicle.id}>
-              <td>{vehicle.name}</td>
-              <td>{vehicle.vehicle_type}</td>
-              <td>{vehicle.status}</td>
-              <td>{vehicle.payload_capacity_kg ?? "—"}</td>
-              <td>{warehouseName(vehicle.home_warehouse_id)}</td>
-              <td>
+            <TableRow key={vehicle.id}>
+              <Td className="font-medium">{vehicle.name}</Td>
+              <Td>{vehicle.vehicle_type}</Td>
+              <Td>
+                <Badge variant={STATUS_BADGE[vehicle.status]}>{vehicle.status}</Badge>
+              </Td>
+              <Td>{vehicle.payload_capacity_kg ?? "—"}</Td>
+              <Td>{warehouseName(vehicle.home_warehouse_id)}</Td>
+              <Td>
                 {vehicle.odoo_link_status === "linked" ? (
-                  <>
-                    Linked — {odooVehicleName(vehicle.odoo_fleet_vehicle_id)}
-                    <button type="button" onClick={() => handleUnlink(vehicle)}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="accent">Linked — {odooVehicleName(vehicle.odoo_fleet_vehicle_id)}</Badge>
+                    <Button size="sm" variant="secondary" onClick={() => handleUnlink(vehicle)}>
                       Unlink
-                    </button>
-                  </>
+                    </Button>
+                  </div>
                 ) : !isActive ? (
-                  <span className="hint">Connect Odoo to link vehicles.</span>
+                  <span className="text-sm text-text-muted">Connect Odoo to link vehicles.</span>
                 ) : linkingId === vehicle.id ? (
                   odooVehicles && !odooAvailable ? (
-                    <span className="hint">Fleet module not available on this Odoo instance.</span>
+                    <span className="text-sm text-text-muted">
+                      Fleet module not available on this Odoo instance.
+                    </span>
                   ) : (
-                    <>
-                      <select value={selectedOdooId} onChange={(e) => setSelectedOdooId(e.target.value)}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={selectedOdooId} onChange={(e) => setSelectedOdooId(e.target.value)}>
                         <option value="">Choose...</option>
                         {(odooVehicles ?? []).map((v) => (
                           <option key={v.id} value={v.id}>
                             {v.name} {v.license_plate ? `(${v.license_plate})` : ""}
                           </option>
                         ))}
-                      </select>
-                      <button
-                        type="button"
+                      </Select>
+                      <Button
+                        size="sm"
                         onClick={() => handleConfirmLink(vehicle)}
                         disabled={!selectedOdooId}
                       >
                         Confirm
-                      </button>
-                      <button type="button" onClick={() => setLinkingId(null)}>
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setLinkingId(null)}>
                         Cancel
-                      </button>
-                    </>
+                      </Button>
+                    </div>
                   )
                 ) : (
-                  <button type="button" onClick={() => handleStartLink(vehicle)}>
+                  <Button size="sm" variant="secondary" onClick={() => handleStartLink(vehicle)}>
                     Link to Odoo Vehicle
-                  </button>
+                  </Button>
                 )}
-              </td>
-              <td>
-                <button type="button" onClick={() => handleEdit(vehicle)}>
-                  Edit
-                </button>
-                <button type="button" onClick={() => handleArchiveToggle(vehicle)}>
-                  {vehicle.active ? "Archive" : "Unarchive"}
-                </button>
-                <button type="button" onClick={() => handleDelete(vehicle)}>
-                  Delete
-                </button>
-              </td>
-            </tr>
+              </Td>
+              <Td>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => handleEdit(vehicle)}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => handleArchiveToggle(vehicle)}>
+                    {vehicle.active ? "Archive" : "Unarchive"}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => handleDelete(vehicle)}>
+                    Delete
+                  </Button>
+                </div>
+              </Td>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

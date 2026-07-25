@@ -9,6 +9,7 @@ import {
   upsertCredential,
 } from "../api/client";
 import type { OdooCompany, OdooCredential, OdooCredentialTestResult } from "../api/types";
+import { Badge, Button, Card, Input, Select } from "../components/ui";
 import { useOdooInstance } from "../context/OdooInstanceContext";
 
 export default function ConnectionPage() {
@@ -44,7 +45,7 @@ export default function ConnectionPage() {
       });
   }, [tenantId]);
 
-  if (!tenantId) return <p className="page">Not logged in.</p>;
+  if (!tenantId) return <p className="p-6 text-text">Not logged in.</p>;
 
   const isActive = existing?.state === "active";
 
@@ -130,137 +131,135 @@ export default function ConnectionPage() {
   }
 
   return (
-    <div className="page page-narrow">
-      <h1>Odoo connection</h1>
+    <div className="mx-auto max-w-xl p-6">
+      <h1 className="mb-4 text-2xl font-semibold text-text">Odoo connection</h1>
 
-      {existing && (
-        <p className={isActive ? "success" : "hint"}>
-          {isActive ? "Active — " : "Draft (not yet activated) — "}
-          <strong>{existing.url}</strong> (db: {existing.db}) as {existing.username}
-        </p>
-      )}
-      {existing?.server_version && (
-        <p className="hint">
-          Connected — Odoo {existing.server_version}
-          {existing.version_change_detected && (
-            <span className="error">
-              {" "}
-              ⚠ Odoo's major version changed since the last check — field mappings may need
-              re-verifying (see SPEC.md's Odoo field mappings).
+      <Card className="flex flex-col gap-4">
+        {existing && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={isActive ? "ok" : "neutral"}>{isActive ? "Active" : "Draft"}</Badge>
+            <span className="text-sm text-text">
+              <strong className="font-medium">{existing.url}</strong> (db: {existing.db}) as{" "}
+              {existing.username}
             </span>
-          )}
-        </p>
-      )}
+          </div>
+        )}
+        {existing?.server_version && (
+          <p className="text-sm text-text-muted">
+            Connected — Odoo {existing.server_version}
+            {existing.version_change_detected && (
+              <span className="ml-2 text-status-warning">
+                ⚠ Odoo's major version changed since the last check — field mappings may need
+                re-verifying (see SPEC.md's Odoo field mappings).
+              </span>
+            )}
+          </p>
+        )}
 
-      {isActive && !reauthenticating ? (
-        <div className="actions">
-          <button type="button" onClick={handleTest}>
-            Test connection
-          </button>
-          <button type="button" onClick={() => setReauthenticating(true)}>
-            Re-authenticate connection
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={isActive ? handleReauthenticate : handleSave}>
-          {isActive && (
-            <p className="hint">
-              Re-authenticating updates the URL, database, username, or API key on this active
-              connection — it never resets your company selection or Operation Types/Warehouses.
-            </p>
-          )}
-          <label>
-            Odoo URL
-            <input
+        {isActive && !reauthenticating ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={handleTest}>
+              Test connection
+            </Button>
+            <Button variant="secondary" onClick={() => setReauthenticating(true)}>
+              Re-authenticate connection
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={isActive ? handleReauthenticate : handleSave} className="flex flex-col gap-4">
+            {isActive && (
+              <p className="text-sm text-text-muted">
+                Re-authenticating updates the URL, database, username, or API key on this active
+                connection — it never resets your company selection or Operation Types/Warehouses.
+              </p>
+            )}
+            <Input
+              label="Odoo URL"
               type="url"
               placeholder="https://customer.odoo.com"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               required
             />
-          </label>
-          <label>
-            Database
-            <input value={db} onChange={(e) => setDb(e.target.value)} required />
-          </label>
-          <label>
-            Username
-            <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-          </label>
-          <label>
-            API key
-            <input
+            <Input label="Database" value={db} onChange={(e) => setDb(e.target.value)} required />
+            <Input
+              label="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+            <Input
+              label="API key"
               type="password"
               placeholder={existing ? "Re-enter to update" : ""}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               required
             />
-          </label>
-          {existing && (
-            <p className="hint">
-              The API key is never shown once saved — re-enter it here any time you want to
-              update the connection.
-            </p>
-          )}
-          {error && <p className="error">{error}</p>}
-          <div className="actions">
-            <button type="submit" disabled={saving}>
-              {saving ? "Saving..." : isActive ? "Confirm re-authentication" : "Save connection"}
-            </button>
-            {!isActive && existing && (
-              <button type="button" onClick={handleTest}>
-                Test connection
-              </button>
+            {existing && (
+              <p className="text-xs text-text-muted">
+                The API key is never shown once saved — re-enter it here any time you want to
+                update the connection.
+              </p>
             )}
-            {isActive && (
-              <button type="button" onClick={() => setReauthenticating(false)}>
-                Cancel
-              </button>
-            )}
-          </div>
-        </form>
-      )}
-      {testResult && (
-        <p className={testResult.success ? "success" : "error"}>{testResult.detail}</p>
-      )}
+            {error && <p className="text-sm text-status-full">{error}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving..." : isActive ? "Confirm re-authentication" : "Save connection"}
+              </Button>
+              {!isActive && existing && (
+                <Button type="button" variant="secondary" onClick={handleTest}>
+                  Test connection
+                </Button>
+              )}
+              {isActive && (
+                <Button type="button" variant="secondary" onClick={() => setReauthenticating(false)}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+        {testResult && (
+          <p className={testResult.success ? "text-sm text-status-ok" : "text-sm text-status-full"}>
+            {testResult.detail}
+          </p>
+        )}
+      </Card>
 
       {existing && (
-        <div className="company-section">
-          <h2>Company</h2>
-          <p className="hint">
+        <Card heading="Company" className="mt-4 flex flex-col gap-3">
+          <p className="text-sm text-text-muted">
             {isActive
               ? "An Odoo instance can have several companies. Planning runs are scoped to the company selected here."
-              : "Selecting a company (or explicitly choosing \"All companies\") activates this connection and unlocks Operation Types, Warehouses, and Odoo fleet/employee linking."}
+              : 'Selecting a company (or explicitly choosing "All companies") activates this connection and unlocks Operation Types, Warehouses, and Odoo fleet/employee linking.'}
           </p>
-          <p>
-            Currently scoped to: <strong>{existing.company_name ?? "All companies"}</strong>
+          <p className="text-sm text-text">
+            Currently scoped to:{" "}
+            <strong className="font-medium">{existing.company_name ?? "All companies"}</strong>
           </p>
-          <div className="actions">
-            <button type="button" onClick={handleLoadCompanies} disabled={loadingCompanies}>
+          <div>
+            <Button variant="secondary" size="sm" onClick={handleLoadCompanies} disabled={loadingCompanies}>
               {loadingCompanies ? "Loading..." : "Load companies from Odoo"}
-            </button>
+            </Button>
           </div>
           {companies && (
-            <div className="actions company-select-row">
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(e.target.value)}
-              >
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
                 <option value="">All companies</option>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
-              <button type="button" onClick={handleSaveCompany} disabled={savingCompany}>
+              </Select>
+              <Button size="sm" onClick={handleSaveCompany} disabled={savingCompany}>
                 {savingCompany ? "Saving..." : isActive ? "Save company" : "Activate connection"}
-              </button>
+              </Button>
             </div>
           )}
-          {companyError && <p className="error">{companyError}</p>}
-        </div>
+          {companyError && <p className="text-sm text-status-full">{companyError}</p>}
+        </Card>
       )}
     </div>
   );
