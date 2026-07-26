@@ -156,6 +156,17 @@ was made against that brief specifically:
 - No drag-and-drop, vehicle-box layout, clustering UI, or state
   management — explicitly out of scope for this pass.
 
+## User management (2026-07-25)
+
+`UsersPage.tsx` (admin-only, `/users`) and `ChangePasswordPage.tsx`
+(`/account`, any logged-in user) — no new tokens or base components,
+built entirely on the existing Button/Input/Select/Card/Badge/Table set.
+The one new pattern: `RequirePermission.tsx` (mirrors `RequireAuth.tsx`)
+and `CurrentUserContext.tsx` (mirrors `OdooInstanceContext.tsx`) gate
+nav links and routes on the logged-in user's actual permissions. See
+DECISIONS.md "User management: role vs. boolean permissions" for the
+permission model itself — this file only covers the UI.
+
 ## Load planning board (2026-07-25)
 
 The Load Planning page (`frontend/src/pages/LoadPlanningPage.tsx`,

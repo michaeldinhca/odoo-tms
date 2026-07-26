@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db
+from app.api.deps import CurrentUser, get_db, require_permission
 from app.models.odoo_credential import TenantOdooCredential
 from app.models.planning_run import PlanningRun
 from app.schemas.planning import PlanningRunRequest, PlanningRunResult
@@ -40,7 +40,7 @@ def _to_result_schema(run: PlanningRun) -> PlanningRunResult:
 def run_planning(
     payload: PlanningRunRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_run_planning")),
 ) -> PlanningRunResult:
     if payload.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant mismatch")
@@ -97,7 +97,7 @@ def run_planning(
 def get_planning_result(
     run_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_run_planning")),
 ) -> PlanningRunResult:
     run = db.get(PlanningRun, run_id)
     if run is None:

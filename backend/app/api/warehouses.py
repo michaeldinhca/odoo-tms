@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db
+from app.api.deps import CurrentUser, get_db, require_permission
 from app.models.synced_picking import SyncedPicking
 from app.models.synced_warehouse import SyncedWarehouse
 from app.models.vehicle import Vehicle
@@ -57,7 +57,7 @@ def list_warehouses(
     tenant_id: uuid.UUID,
     include_archived: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> list[SyncedWarehouse]:
     _require_same_tenant(tenant_id, current_user)
     query = db.query(SyncedWarehouse).filter_by(tenant_id=tenant_id)
@@ -70,7 +70,7 @@ def list_warehouses(
 def preview_warehouses_refresh(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> dict:
     """Dry-run — fetches from Odoo and diffs against local rows, writes
     nothing. The frontend shows this before letting the user confirm."""
@@ -84,7 +84,7 @@ def preview_warehouses_refresh(
 def refresh_warehouses(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> list[SyncedWarehouse]:
     _require_same_tenant(tenant_id, current_user)
     credential = require_active_instance(db, tenant_id)
@@ -102,7 +102,7 @@ def set_warehouse_sync(
     warehouse_id: uuid.UUID,
     payload: WarehouseSyncToggle,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> SyncedWarehouse:
     _require_same_tenant(tenant_id, current_user)
     row = _get_warehouse_or_404(db, tenant_id, warehouse_id)
@@ -119,7 +119,7 @@ def set_warehouse_active(
     warehouse_id: uuid.UUID,
     payload: ArchiveToggle,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> SyncedWarehouse:
     _require_same_tenant(tenant_id, current_user)
     row = _get_warehouse_or_404(db, tenant_id, warehouse_id)
@@ -135,7 +135,7 @@ def delete_warehouse(
     tenant_id: uuid.UUID,
     warehouse_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> None:
     _require_same_tenant(tenant_id, current_user)
     row = _get_warehouse_or_404(db, tenant_id, warehouse_id)

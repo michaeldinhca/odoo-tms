@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db
+from app.api.deps import CurrentUser, get_db, require_permission
 from app.models.synced_operation_type import SyncedOperationType
 from app.models.synced_picking import SyncedPicking
 from app.schemas.sync_config import (
@@ -66,7 +66,7 @@ def list_operation_types(
     tenant_id: uuid.UUID,
     include_archived: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_operation_types")),
 ) -> list[SyncedOperationType]:
     _require_same_tenant(tenant_id, current_user)
     query = db.query(SyncedOperationType).filter_by(tenant_id=tenant_id)
@@ -79,7 +79,7 @@ def list_operation_types(
 def preview_operation_types_refresh(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_operation_types")),
 ) -> dict:
     """Dry-run — fetches from Odoo and diffs against local rows, writes
     nothing. The frontend shows this before letting the user confirm."""
@@ -93,7 +93,7 @@ def preview_operation_types_refresh(
 def refresh_operation_types(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_operation_types")),
 ) -> list[SyncedOperationType]:
     _require_same_tenant(tenant_id, current_user)
     credential = require_active_instance(db, tenant_id)
@@ -111,7 +111,7 @@ def set_operation_type_sync(
     operation_type_id: uuid.UUID,
     payload: OperationTypeSyncToggle,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_operation_types")),
 ) -> SyncedOperationType:
     _require_same_tenant(tenant_id, current_user)
     row = _get_operation_type_or_404(db, tenant_id, operation_type_id)
@@ -128,7 +128,7 @@ def set_operation_type_active(
     operation_type_id: uuid.UUID,
     payload: ArchiveToggle,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_operation_types")),
 ) -> SyncedOperationType:
     _require_same_tenant(tenant_id, current_user)
     row = _get_operation_type_or_404(db, tenant_id, operation_type_id)
@@ -144,7 +144,7 @@ def delete_operation_type(
     tenant_id: uuid.UUID,
     operation_type_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_operation_types")),
 ) -> None:
     _require_same_tenant(tenant_id, current_user)
     row = _get_operation_type_or_404(db, tenant_id, operation_type_id)

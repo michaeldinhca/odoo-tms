@@ -66,7 +66,22 @@ next unchanged check.
 | tenant_id     | UUID (FK)   | references `tenants.id`             |
 | email         | text        | unique                              |
 | password_hash | text        |                                      |
+| role          | text        | `admin`/`user`, default `user` — gates *only* the Users page itself (see DECISIONS.md "Role vs. boolean permissions"); not a bypass for the columns below |
+| can_manage_connection | boolean | default `false` |
+| can_manage_warehouses | boolean | default `false` |
+| can_manage_operation_types | boolean | default `false` |
+| can_manage_fleet | boolean | default `false` — vehicles + drivers together |
+| can_run_planning | boolean | default `true` |
+| can_use_load_planning | boolean | default `true` |
 | created_at    | timestamptz |                                      |
+
+Every feature area other than user management is gated by its own
+boolean, for every user regardless of `role` — an admin with
+`can_manage_warehouses=false` is blocked from the Warehouses page exactly
+like a `user`-role account would be. `role="admin"` is only checked by
+the user-management endpoints (`/tenants/{id}/users/*`), and a tenant can
+never end up with zero admins: demoting or deleting the last `role="admin"`
+row is rejected (400).
 
 ### `planning_runs`
 
@@ -314,8 +329,15 @@ address context needed to actually dispatch it, not just the picking ID.
 | method | path                                 | purpose                                          | status |
 |--------|--------------------------------------|---------------------------------------------------|--------|
 | POST   | `/auth/login`                        | JWT login                                          | implemented |
+| GET    | `/auth/me`                           | current user's own role/permissions (any authenticated user, not admin-gated) | implemented |
+| PUT    | `/auth/password`                     | self-service password change (requires current password) | implemented |
 | GET    | `/tenants`                           | list tenants (admin)                               | implemented |
 | POST   | `/tenants`                           | create tenant                                      | implemented |
+| GET    | `/tenants/{id}/users`                | list users (requires `role=="admin"`)              | implemented |
+| POST   | `/tenants/{id}/users`                | create a user + set initial password (no invite-email flow — see TODO.md); requires `role=="admin"` | implemented |
+| PUT    | `/tenants/{id}/users/{user_id}`      | update email/role/permissions (partial); blocks demoting the last admin; requires `role=="admin"` | implemented |
+| DELETE | `/tenants/{id}/users/{user_id}`      | delete; blocks deleting the last admin; requires `role=="admin"` | implemented |
+| PUT    | `/tenants/{id}/users/{user_id}/password` | admin resets another user's password (no current-password check); requires `role=="admin"` | implemented |
 | GET    | `/tenants/{id}/credentials`          | get Odoo connection status (never returns key)     | implemented |
 | PUT    | `/tenants/{id}/credentials`          | initial setup: set/update Odoo connection (Fernet-encrypts key); creates a `draft` row, never touches `state` on an existing one | implemented |
 | POST   | `/tenants/{id}/credentials/reauthenticate` | same field update as the PUT above, but only when `state=="active"` (409 otherwise) — see DECISIONS.md "Odoo connection state machine" | implemented |
@@ -354,6 +376,14 @@ address context needed to actually dispatch it, not just the picking ID.
 | GET    | `/planning/results/{id}`             | fetch a planning run's result                      | implemented |
 
 No user self-registration/invite endpoint exists — see TODO.md.
+
+Every endpoint under `/tenants/{id}/credentials`, `/operation-types`,
+`/warehouses`, `/vehicles`, and `/drivers` requires the corresponding
+`can_manage_*` permission; every endpoint under `/planning` requires
+`can_run_planning`. The Load Planning board has no backend endpoints of
+its own yet (still fixture data — see `design.md`), so `can_use_load_planning`
+is currently enforced only on the frontend route. See DECISIONS.md "Role
+vs. boolean permissions" for why `role` doesn't bypass these.
 
 ## Version-aware field mapping registry
 

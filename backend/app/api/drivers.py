@@ -4,7 +4,7 @@ import xmlrpc.client
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db
+from app.api.deps import CurrentUser, get_db, require_permission
 from app.models.driver import Driver
 from app.schemas.fleet import (
     DriverCreate,
@@ -43,7 +43,7 @@ def list_drivers(
     status_filter: DriverStatus | None = None,
     include_archived: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> list[Driver]:
     _require_same_tenant(tenant_id, current_user)
     query = db.query(Driver).filter_by(tenant_id=tenant_id)
@@ -59,7 +59,7 @@ def create_driver(
     tenant_id: uuid.UUID,
     payload: DriverCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Driver:
     _require_same_tenant(tenant_id, current_user)
     driver = Driver(tenant_id=tenant_id, **payload.model_dump())
@@ -73,7 +73,7 @@ def create_driver(
 def list_odoo_employees(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> OdooEmployeeList:
     """Browse-only — never auto-creates local drivers from this list.
     Requires an active connection, same as any other Odoo-reaching call."""
@@ -106,7 +106,7 @@ def get_driver(
     tenant_id: uuid.UUID,
     driver_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Driver:
     _require_same_tenant(tenant_id, current_user)
     return _get_driver_or_404(db, tenant_id, driver_id)
@@ -118,7 +118,7 @@ def update_driver(
     driver_id: uuid.UUID,
     payload: DriverUpdate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Driver:
     _require_same_tenant(tenant_id, current_user)
     driver = _get_driver_or_404(db, tenant_id, driver_id)
@@ -134,7 +134,7 @@ def delete_driver(
     tenant_id: uuid.UUID,
     driver_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> None:
     _require_same_tenant(tenant_id, current_user)
     driver = _get_driver_or_404(db, tenant_id, driver_id)
@@ -160,7 +160,7 @@ def link_driver_to_odoo(
     driver_id: uuid.UUID,
     payload: DriverLinkOdoo,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Driver:
     """Sets the Odoo cross-reference only — never touches any other field on
     the local driver (see DECISIONS.md). Requires an active connection, same
@@ -180,7 +180,7 @@ def unlink_driver_from_odoo(
     tenant_id: uuid.UUID,
     driver_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Driver:
     _require_same_tenant(tenant_id, current_user)
     driver = _get_driver_or_404(db, tenant_id, driver_id)

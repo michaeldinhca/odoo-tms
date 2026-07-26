@@ -416,3 +416,69 @@ runner.py::fetch_vehicles` still pulls `fleet.vehicle` directly from Odoo
 on every planning run rather than using the local `vehicles` table, so
 "referenced by a planning/route record" doesn't actually apply to the
 local `Vehicle` entity yet. Logged in TODO.md as a follow-up.
+
+---
+
+## 2026-07-25 — User management: role vs. boolean permissions
+
+**Decision:** `User` gained a `role` column (`admin`/`user`) and six
+independent `can_manage_connection`/`can_manage_warehouses`/
+`can_manage_operation_types`/`can_manage_fleet`/`can_run_planning`/
+`can_use_load_planning` booleans. `role` does **not** act as an
+all-access bypass — it is checked in exactly one place
+(`app.api.deps.require_admin`, gating `/tenants/{id}/users/*`) and
+nowhere else. Every other endpoint is gated by `require_permission(flag)`,
+which checks the boolean directly regardless of `role` — an admin with
+`can_manage_warehouses=false` is blocked from the Warehouses page exactly
+like a `user`-role account would be. New users default to `role="user"`
+with `can_run_planning`/`can_use_load_planning` true and the rest false,
+matching the "user can load stock pickings [i.e. run planning], use load
+planning" baseline the user described; an admin creating a user can
+freely override any of the six regardless of the chosen role.
+
+**Why not let `role="admin"` bypass the booleans:** the user explicitly
+asked for "functional boolean turn on/off for each function... that will
+give flexibility to assign user permission." A role-bypass would silently
+undermine that — turning a box off would do nothing for an admin account,
+which isn't the flexibility that was asked for. Keeping `role` narrowly
+scoped to "can this account reach the Users page" makes the booleans the
+one real permission mechanism, consistently, for every account.
+
+**Last-admin lockout guard:** demoting (`role` admin→user) or deleting the
+last remaining `role="admin"` row for a tenant is rejected with a 400
+(`app.api.users`, `_admin_count`). Without this, a tenant with a single
+admin could accidentally lock itself out of its own user management —
+there is no superadmin/support backdoor in this system to recover from
+that.
+
+**Fresh-DB-lookup permission checks, not JWT claims:** `get_current_user`
+now queries the `users` row on every request instead of trusting anything
+baked into the JWT at login time — with a 7-day token lifetime (see the
+session-lifetime entry above), a permission revoked mid-session, or a
+deleted user, needs to take effect on the very next request, not just
+after the token eventually expires. Same reasoning applies on the
+frontend: `CurrentUserContext` fetches `/auth/me` rather than decoding
+the JWT for role/permissions (the JWT is only ever decoded client-side
+for its `exp` claim, to detect an expired session — see
+`hasValidSession()`).
+
+**Permission mapping onto existing routers (all fully gated, not split
+read/write):** `can_manage_connection` → all of `credentials.py`;
+`can_manage_warehouses` → all of `warehouses.py`; `can_manage_operation_types`
+→ all of `operation_types.py`; `can_manage_fleet` → all of `vehicles.py`
+*and* `drivers.py` (kept together rather than split, since the user
+described them as one "employee" management concern); `can_run_planning`
+→ all of `planning.py`. Every route in a gated file is covered, including
+plain `GET`s — a `user` role has no stated need to even view Odoo
+connection details, warehouses, etc., so there was no reason to split
+read from write per endpoint. `can_use_load_planning` currently has no
+backend endpoint to gate (the load-planning board is still fixture data —
+see design.md), so it's enforced only via the frontend route guard;
+revisit once that page gets real API calls.
+
+**No invite-email flow:** there's no email-sending capability anywhere in
+this project. An admin creating a user sets the initial password directly
+and shares it out of band — this was true of the original single seeded
+account too (`app/seed.py`), just now available through the UI instead of
+only a script. Logged as a TODO if this ever needs to scale past a
+handful of manually-added accounts per tenant.

@@ -268,7 +268,33 @@ gets done.
       now; revisit if 7 days turns out to be too short in practice
 - [ ] Real Odoo 19 instance with volume/lat-lon data to confirm those field
       mappings (see "Open questions" below) — still placeholder zeros
-- [ ] User invite/registration flow (currently seed-script only)
+- [x] User management: add/edit/delete users, admin resets any user's
+      password, self-service password change for any logged-in user
+      (`/tenants/{id}/users/*`, `/auth/me`, `/auth/password` — see
+      DECISIONS.md "User management: role vs. boolean permissions"). Two
+      roles (admin/user), but `role` only gates the Users page itself —
+      six independent booleans (`can_manage_connection`/`_warehouses`/
+      `_operation_types`/`_fleet`, `can_run_planning`,
+      `can_use_load_planning`) gate everything else, for every account
+      regardless of role. Every existing router (credentials, warehouses,
+      operation-types, vehicles, drivers, planning) now requires the
+      matching permission on every endpoint. Frontend: Users page
+      (admin-only) for CRUD + permission toggles, an Account page for
+      self-service password change, nav links and routes hidden/blocked
+      per the current user's permissions via a new `CurrentUserContext`
+      (mirrors `OdooInstanceContext`) and `RequirePermission` guard.
+      Still no invite-email flow — an admin sets the initial password
+      directly and shares it out of band, same limitation the seed
+      script always had
+- [ ] Invite-email flow for new users (currently: admin sets an initial
+      password directly, no email involved) — needs an email-sending
+      capability this project doesn't have yet
+- [ ] `can_use_load_planning` has no backend endpoint to actually gate
+      yet (the load-planning board is still fixture data); only enforced
+      via the frontend route today — revisit once it gets real API calls
+- [ ] No superadmin/support-side way to recover a tenant that's down to
+      zero users entirely (as opposed to zero admins, which is guarded) —
+      out of scope for now, would need a platform-level operator role
 - [ ] Depot location modeling — route distance currently sums stop-to-stop
       legs only, no depot-to-first-stop leg (see SPEC.md)
 - [ ] ETA computation — `RouteStop.eta` is always null; needs a depot start

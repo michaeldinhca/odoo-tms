@@ -232,3 +232,45 @@ export interface OdooEmployeeList {
   available: boolean;
   employees: OdooEmployeeOption[];
 }
+
+export type UserRole = "admin" | "user";
+
+/** `role` only gates the Users page itself (see `CurrentUserContext`'s
+ * `isAdmin`); every other feature is gated by its own `can_*` boolean,
+ * for both roles alike — see design.md "Role vs. boolean permissions". */
+export interface User {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: UserRole;
+  can_manage_connection: boolean;
+  can_manage_warehouses: boolean;
+  can_manage_operation_types: boolean;
+  can_manage_fleet: boolean;
+  can_run_planning: boolean;
+  can_use_load_planning: boolean;
+  created_at: string;
+}
+
+export interface UserCreateInput {
+  email: string;
+  password: string;
+  role: UserRole;
+  can_manage_connection: boolean;
+  can_manage_warehouses: boolean;
+  can_manage_operation_types: boolean;
+  can_manage_fleet: boolean;
+  can_run_planning: boolean;
+  can_use_load_planning: boolean;
+}
+
+export type UserUpdateInput = Partial<Omit<UserCreateInput, "password">>;
+
+export interface AdminPasswordResetInput {
+  new_password: string;
+}
+
+export interface SelfPasswordChangeInput {
+  current_password: string;
+  new_password: string;
+}

@@ -31,6 +31,13 @@ def seed() -> None:
             tenant_id=tenant.id,
             email=DEFAULT_EMAIL,
             password_hash=hash_password(DEFAULT_PASSWORD),
+            role="admin",
+            can_manage_connection=True,
+            can_manage_warehouses=True,
+            can_manage_operation_types=True,
+            can_manage_fleet=True,
+            can_run_planning=True,
+            can_use_load_planning=True,
         )
         db.add(user)
         db.commit()

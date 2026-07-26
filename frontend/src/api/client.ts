@@ -1,4 +1,5 @@
 import type {
+  AdminPasswordResetInput,
   Driver,
   DriverInput,
   FleetVehicle,
@@ -12,7 +13,11 @@ import type {
   OperationType,
   OperationTypeRefreshPreview,
   PlanningRunResult,
+  SelfPasswordChangeInput,
   TokenResponse,
+  User,
+  UserCreateInput,
+  UserUpdateInput,
   Warehouse,
   WarehouseRefreshPreview,
 } from "./types";
@@ -346,5 +351,53 @@ export function linkDriverToOdoo(
 export function unlinkDriverFromOdoo(tenantId: string, driverId: string): Promise<Driver> {
   return request<Driver>(`/tenants/${tenantId}/drivers/${driverId}/odoo-link`, {
     method: "DELETE",
+  });
+}
+
+export function getMe(): Promise<User> {
+  return request<User>("/auth/me");
+}
+
+export function changeMyPassword(payload: SelfPasswordChangeInput): Promise<User> {
+  return request<User>("/auth/password", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listUsers(tenantId: string): Promise<User[]> {
+  return request<User[]>(`/tenants/${tenantId}/users`);
+}
+
+export function createUser(tenantId: string, payload: UserCreateInput): Promise<User> {
+  return request<User>(`/tenants/${tenantId}/users`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateUser(
+  tenantId: string,
+  userId: string,
+  payload: UserUpdateInput,
+): Promise<User> {
+  return request<User>(`/tenants/${tenantId}/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteUser(tenantId: string, userId: string): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/users/${userId}`, { method: "DELETE" });
+}
+
+export function resetUserPassword(
+  tenantId: string,
+  userId: string,
+  payload: AdminPasswordResetInput,
+): Promise<User> {
+  return request<User>(`/tenants/${tenantId}/users/${userId}/password`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }

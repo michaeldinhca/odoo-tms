@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db
+from app.api.deps import CurrentUser, get_db, require_permission
 from app.core.crypto import encrypt_secret
 from app.models.odoo_credential import TenantOdooCredential
 from app.schemas.credentials import (
@@ -41,7 +41,7 @@ def _apply_credential_fields(
 def get_credential(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_connection")),
 ) -> TenantOdooCredential:
     _require_same_tenant(tenant_id, current_user)
     return get_credential_or_404(db, tenant_id)
@@ -52,7 +52,7 @@ def upsert_credential(
     tenant_id: uuid.UUID,
     payload: OdooCredentialUpsert,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_connection")),
 ) -> TenantOdooCredential:
     """The initial/setup save — always usable regardless of current state,
     so a broken draft connection can always be corrected. Never touches
@@ -80,7 +80,7 @@ def reauthenticate_credential(
     tenant_id: uuid.UUID,
     payload: OdooCredentialUpsert,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_connection")),
 ) -> TenantOdooCredential:
     """Distinct from the initial setup PUT above: only usable once the
     connection is already active, so re-authenticating (e.g. after an API
@@ -105,7 +105,7 @@ def reauthenticate_credential(
 def test_credential(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_connection")),
 ) -> OdooCredentialTestResult:
     _require_same_tenant(tenant_id, current_user)
     credential = get_credential_or_404(db, tenant_id)
@@ -135,7 +135,7 @@ def test_credential(
 def list_companies(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_connection")),
 ) -> list[dict]:
     """Live-fetches the Odoo instance's companies so the dispatcher can pick
     which one to scope planning runs to (see DECISIONS.md multi-company
@@ -158,7 +158,7 @@ def select_company(
     tenant_id: uuid.UUID,
     payload: OdooCredentialCompanySelect,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_connection")),
 ) -> TenantOdooCredential:
     """Confirming a company selection (even "All companies", i.e. both
     fields None) is the explicit "Activate" step that completes staged

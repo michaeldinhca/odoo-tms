@@ -4,7 +4,7 @@ import xmlrpc.client
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db
+from app.api.deps import CurrentUser, get_db, require_permission
 from app.models.driver import Driver
 from app.models.vehicle import Vehicle
 from app.schemas.fleet import (
@@ -45,7 +45,7 @@ def list_vehicles(
     home_warehouse_id: uuid.UUID | None = None,
     include_archived: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> list[Vehicle]:
     _require_same_tenant(tenant_id, current_user)
     query = db.query(Vehicle).filter_by(tenant_id=tenant_id)
@@ -63,7 +63,7 @@ def create_vehicle(
     tenant_id: uuid.UUID,
     payload: VehicleCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Vehicle:
     _require_same_tenant(tenant_id, current_user)
     vehicle = Vehicle(tenant_id=tenant_id, **payload.model_dump())
@@ -77,7 +77,7 @@ def create_vehicle(
 def list_odoo_fleet_vehicles(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> OdooFleetVehicleList:
     """Browse-only — never auto-creates local vehicles from this list.
     Requires an active connection, same as any other Odoo-reaching call."""
@@ -110,7 +110,7 @@ def get_vehicle(
     tenant_id: uuid.UUID,
     vehicle_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Vehicle:
     _require_same_tenant(tenant_id, current_user)
     return _get_vehicle_or_404(db, tenant_id, vehicle_id)
@@ -122,7 +122,7 @@ def update_vehicle(
     vehicle_id: uuid.UUID,
     payload: VehicleUpdate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Vehicle:
     _require_same_tenant(tenant_id, current_user)
     vehicle = _get_vehicle_or_404(db, tenant_id, vehicle_id)
@@ -138,7 +138,7 @@ def delete_vehicle(
     tenant_id: uuid.UUID,
     vehicle_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> None:
     _require_same_tenant(tenant_id, current_user)
     vehicle = _get_vehicle_or_404(db, tenant_id, vehicle_id)
@@ -163,7 +163,7 @@ def link_vehicle_to_odoo(
     vehicle_id: uuid.UUID,
     payload: VehicleLinkOdoo,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Vehicle:
     """Sets the Odoo cross-reference only — never touches any other field on
     the local vehicle (see DECISIONS.md). Requires an active connection,
@@ -185,7 +185,7 @@ def unlink_vehicle_from_odoo(
     tenant_id: uuid.UUID,
     vehicle_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("can_manage_fleet")),
 ) -> Vehicle:
     _require_same_tenant(tenant_id, current_user)
     vehicle = _get_vehicle_or_404(db, tenant_id, vehicle_id)
