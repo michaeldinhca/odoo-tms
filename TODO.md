@@ -141,6 +141,31 @@ gets done.
       endpoints and replaced tenant management with a new CLI,
       `python -m app.manage_tenants create|list|update` (list supports
       `--state` filtering to quickly find tenants needing attention)
+- [x] `OdooCredentialUpsert` validates/normalizes at the schema boundary:
+      `url`/`db`/`username`/`api_key` trimmed, `url` must start with
+      `http://`/`https://` (trailing slash stripped). Username case is
+      preserved, only whitespace stripped — Odoo usernames are
+      case-sensitive. Fixed a real, previously-unexercised frontend gap
+      this surfaced: FastAPI's automatic 422 validation responses shape
+      `detail` as an array of objects, not the plain string every
+      hand-raised `HTTPException` in this backend uses — the frontend's
+      error handler only knew the string shape until now (see
+      DECISIONS.md)
+- [x] Route color palette expanded 8 → 12 hues; picking-address prefill
+      changed from an unbounded scan capped at 500 distinct results to a
+      bounded scan of the 100 most recent pickings; `DestinationLocation.
+      lat`/`lng` made nullable (migration `0011`) and destinations now
+      auto-create from new stock.picking addresses after every
+      `/planning/run` (matched via a shared `normalize_address_key`,
+      skipped for blank customer names, `distance_km`/map rendering treat
+      a null coordinate as "can't compute/place yet," library table flags
+      it with a "Needs coordinates" badge); operation types now scoped to
+      synced warehouses only (`GET`/refresh/preview all filter on
+      `SyncedWarehouse.is_synced` — previously that flag had zero effect
+      on anything), with `warehouse_name` resolved onto `OperationTypeRead`
+      at read time — see DECISIONS.md "Odoo connection validation,
+      sync-scoped pickers, destination auto-create, sync-warehouse-first
+      for operation types" for the full batch
 
 ## Frontend
 
@@ -283,6 +308,36 @@ gets done.
       `@types/leaflet`. Markers use `L.divIcon` (inline HTML/CSS), not
       Leaflet's default image-based icons, to avoid the well-known
       bundler asset-path issue and to make per-route coloring trivial
+- [x] Connection page: URL/database/username/API key fields now trim on
+      blur and again defensively at submit; a note under Username shows
+      Odoo's case-sensitivity with a concrete example ("minhd, not
+      Minhd") instead of just saying "case-sensitive"
+- [x] New `ColorSwatchPicker.tsx` (12 fixed color circles, click to pick)
+      replaces the native `<input type="color">` on the Routes page's
+      create-route and rename/recolor forms — a full-spectrum picker let
+      someone choose two shades too similar to read as different routes
+      on the map
+- [x] Routes page's warehouse selector, and the merged Warehouses &
+      Operation Types page's operation-type "Warehouse" column, now only
+      concern synced (`is_synced=true`) warehouses — an unsynced
+      warehouse isn't a real operating location yet
+- [x] Destination library table: a "Needs coordinates" warning badge on
+      any destination with null lat/lng (i.e. auto-created from a
+      picking address, not yet reviewed — see Backend); `RouteMap.tsx`
+      and the route stop table both skip/blank a stop with no
+      coordinates instead of erroring
+- [x] Warehouses and Operation Types pages merged into one screen
+      (`WarehousesPage.tsx`, same `/warehouses` route) — sync a warehouse,
+      then manage its operation types right below, each row showing its
+      resolved warehouse name instead of a bare Odoo id. `RequirePermission`
+      extended to accept an array of permissions (any-of, not all-of) so
+      the merged route stays reachable with either `can_manage_warehouses`
+      or `can_manage_operation_types` alone, matching what the two
+      separate routes each allowed before; each section inside the page
+      still independently checks its own specific permission. `/operation-
+      types` now redirects to `/warehouses`, and its nav entry was removed
+      (folded into the "Warehouses" entry, which now carries both
+      permissions)
 
 ## Infra
 
@@ -341,6 +396,11 @@ gets done.
 
 ## Next up
 
+- [ ] A dedicated filter/view for destinations still "Needs coordinates"
+      (auto-created from a picking address, null lat/lng) — today it's
+      just a badge in the full destination library table; fine at small
+      volume, would get tedious to scan once auto-create has been
+      running for a while
 - [ ] **Manage the tenant list from Odoo** — the user's stated future
       direction: for now, tenant onboarding/subscription management is a
       CLI script (`python -m app.manage_tenants`, see above), but they

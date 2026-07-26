@@ -225,6 +225,19 @@ def get_synced_operation_type_ids(db: Session, tenant_id: uuid.UUID) -> set[int]
     return {row[0] for row in rows}
 
 
+def get_synced_warehouse_odoo_ids(db: Session, tenant_id: uuid.UUID) -> set[int]:
+    """The set of Odoo warehouse ids the tenant has opted into syncing —
+    operation types are scoped to these (see app.api.operation_types):
+    a warehouse must be synced before its operation types are even
+    visible to manage, let alone synced themselves."""
+    rows = (
+        db.query(SyncedWarehouse.odoo_warehouse_id)
+        .filter_by(tenant_id=tenant_id, is_synced=True)
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
 def get_warehouse_by_picking_type(db: Session, tenant_id: uuid.UUID) -> dict[int, dict]:
     """Maps Odoo picking_type id -> {warehouse_id, warehouse_name}, joining
     synced_operation_types.warehouse_id against synced_warehouses locally

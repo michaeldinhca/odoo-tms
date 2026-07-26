@@ -8,7 +8,7 @@ import {
   updateDestinationLocation,
 } from "../api/client";
 import type { DestinationLocation, DestinationLocationInput, PickingAddressOption } from "../api/types";
-import { Button, Card, Input, Select, Table, TableBody, TableHead, TableRow, Td, Th } from "../components/ui";
+import { Badge, Button, Card, Input, Select, Table, TableBody, TableHead, TableRow, Td, Th } from "../components/ui";
 
 const EMPTY_FORM: DestinationLocationInput = {
   name: "",
@@ -84,8 +84,11 @@ export default function DestinationLocationsPage() {
       state: destination.state,
       country: destination.country,
       zip: destination.zip,
-      lat: destination.lat,
-      lng: destination.lng,
+      // Auto-created destinations (see DECISIONS.md) start with no
+      // coordinates — default the form to 0 rather than leaving it
+      // unset, same starting point as adding a brand new destination.
+      lat: destination.lat ?? 0,
+      lng: destination.lng ?? 0,
     });
   }
 
@@ -224,24 +227,36 @@ export default function DestinationLocationsPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {destinations.map((d) => (
-              <TableRow key={d.id}>
-                <Td className="font-medium">{d.name}</Td>
-                <Td>{formatAddress(d)}</Td>
-                <Td>{d.lat}</Td>
-                <Td>{d.lng}</Td>
-                <Td>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => handleEdit(d)}>
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => handleDelete(d)}>
-                      Delete
-                    </Button>
-                  </div>
-                </Td>
-              </TableRow>
-            ))}
+            {destinations.map((d) => {
+              const needsCoordinates = d.lat == null || d.lng == null;
+              return (
+                <TableRow key={d.id}>
+                  <Td className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {d.name}
+                      {needsCoordinates && (
+                        <Badge variant="warning" title="Auto-added from a delivery address — no coordinates yet">
+                          Needs coordinates
+                        </Badge>
+                      )}
+                    </div>
+                  </Td>
+                  <Td>{formatAddress(d)}</Td>
+                  <Td>{d.lat ?? "—"}</Td>
+                  <Td>{d.lng ?? "—"}</Td>
+                  <Td>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => handleEdit(d)}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => handleDelete(d)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </Td>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}

@@ -32,6 +32,11 @@ class DestinationLocationUpdate(BaseModel):
 
 
 class DestinationLocationRead(BaseModel):
+    """`lat`/`lng` are nullable in the read shape even though manual
+    creation (DestinationLocationCreate above) still requires them — an
+    auto-created destination (see app.services.picking_sync) has neither,
+    until an admin fills them in."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -43,8 +48,8 @@ class DestinationLocationRead(BaseModel):
     state: str
     country: str
     zip: str
-    lat: float
-    lng: float
+    lat: float | None
+    lng: float | None
     created_at: datetime
     updated_at: datetime
 

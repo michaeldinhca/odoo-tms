@@ -86,6 +86,9 @@ export interface PlanningRunResult {
   completed_at: string | null;
 }
 
+/** Scoped to synced warehouses server-side — the list this type describes
+ * never includes a row for a warehouse that isn't currently synced (see
+ * DECISIONS.md). `warehouse_name` is resolved at read time, not stored. */
 export interface OperationType {
   id: string;
   tenant_id: string;
@@ -93,6 +96,7 @@ export interface OperationType {
   name: string;
   code: string;
   warehouse_id: number | null;
+  warehouse_name: string | null;
   is_synced: boolean;
   active: boolean;
   last_seen_at: string | null;
@@ -131,6 +135,10 @@ export interface WarehouseCoordinatesInput {
   lng: number | null;
 }
 
+/** `lat`/`lng` are null for a destination auto-created from a
+ * stock.picking address (see DECISIONS.md) that hasn't had coordinates
+ * filled in yet — manual creation (DestinationLocationInput below) still
+ * always requires them. */
 export interface DestinationLocation {
   id: string;
   tenant_id: string;
@@ -141,8 +149,8 @@ export interface DestinationLocation {
   state: string;
   country: string;
   zip: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   created_at: string;
   updated_at: string;
 }

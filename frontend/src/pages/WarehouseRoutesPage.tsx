@@ -14,6 +14,7 @@ import {
 } from "../api/client";
 import type { DestinationLocation, Warehouse, WarehouseRoute } from "../api/types";
 import { Button, Card, Input, Select, Table, TableBody, TableHead, TableRow, Td, Th } from "../components/ui";
+import { ColorSwatchPicker } from "../components/ColorSwatchPicker";
 import { RouteMap } from "../components/RouteMap";
 
 export default function WarehouseRoutesPage() {
@@ -32,7 +33,14 @@ export default function WarehouseRoutesPage() {
   const [openRouteId, setOpenRouteId] = useState<string | null>(null);
   const [selectedDestinationIds, setSelectedDestinationIds] = useState<Set<string>>(new Set());
 
-  const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) ?? null;
+  // Routes only make sense for warehouses actually in use — a warehouse
+  // that exists locally but hasn't been opted into sync isn't a real
+  // operating location yet (see DECISIONS.md). Looking `selectedWarehouse`
+  // up from this filtered list too (not the raw `warehouses` array) means
+  // a warehouse that gets un-synced while selected correctly falls back
+  // to "nothing selected" rather than continuing to show its routes.
+  const syncedWarehouses = warehouses.filter((w) => w.is_synced);
+  const selectedWarehouse = syncedWarehouses.find((w) => w.id === selectedWarehouseId) ?? null;
 
   useEffect(() => {
     if (!tenantId) return;
@@ -174,7 +182,7 @@ export default function WarehouseRoutesPage() {
           onChange={(e) => setSelectedWarehouseId(e.target.value)}
         >
           <option value="">Choose a warehouse...</option>
-          {warehouses.map((w) => (
+          {syncedWarehouses.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
             </option>
@@ -182,7 +190,20 @@ export default function WarehouseRoutesPage() {
         </Select>
       </div>
 
-      {!selectedWarehouse && (
+      {syncedWarehouses.length === 0 && (
+        <p className="text-sm text-text-muted">
+          No synced warehouses yet —{" "}
+          <Link
+            to="/warehouses"
+            className="rounded-sm text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
+            sync one on the Warehouses page
+          </Link>{" "}
+          first.
+        </p>
+      )}
+
+      {syncedWarehouses.length > 0 && !selectedWarehouse && (
         <p className="text-sm text-text-muted">Choose a warehouse to manage its routes.</p>
       )}
 
@@ -223,13 +244,7 @@ export default function WarehouseRoutesPage() {
                 onChange={(e) => setNewRouteName(e.target.value)}
                 required
               />
-              <Input
-                label="Color (optional)"
-                type="color"
-                value={newRouteColor}
-                onChange={(e) => setNewRouteColor(e.target.value)}
-                className="h-10 w-16 p-1"
-              />
+              <ColorSwatchPicker label="Color (optional)" value={newRouteColor} onChange={setNewRouteColor} />
               <Button type="submit">Create route</Button>
             </form>
           </Card>
@@ -258,11 +273,9 @@ export default function WarehouseRoutesPage() {
                               value={editForm.name}
                               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                             />
-                            <Input
-                              type="color"
+                            <ColorSwatchPicker
                               value={editForm.color}
-                              onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
-                              className="h-10 w-16 p-1"
+                              onChange={(color) => setEditForm({ ...editForm, color })}
                             />
                             <Button size="sm" onClick={() => handleSaveEdit(route.id)}>
                               Save

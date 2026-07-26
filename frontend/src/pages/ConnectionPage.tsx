@@ -55,7 +55,15 @@ export default function ConnectionPage() {
     setTestResult(null);
     setSaving(true);
     try {
-      const credential = await upsertCredential(tenantId!, { url, db, username, api_key: apiKey });
+      // Defensive re-trim on top of each field's onBlur — a field that
+      // never lost focus before submit (e.g. Enter pressed straight from
+      // it) wouldn't have been trimmed yet otherwise.
+      const credential = await upsertCredential(tenantId!, {
+        url: url.trim(),
+        db: db.trim(),
+        username: username.trim(),
+        api_key: apiKey.trim(),
+      });
       setExisting(credential);
       setApiKey("");
       refetchInstance();
@@ -71,7 +79,12 @@ export default function ConnectionPage() {
     setError(null);
     setSaving(true);
     try {
-      const credential = await reauthenticateCredential(tenantId!, { url, db, username, api_key: apiKey });
+      const credential = await reauthenticateCredential(tenantId!, {
+        url: url.trim(),
+        db: db.trim(),
+        username: username.trim(),
+        api_key: apiKey.trim(),
+      });
       setExisting(credential);
       setApiKey("");
       setReauthenticating(false);
@@ -179,21 +192,37 @@ export default function ConnectionPage() {
               placeholder="https://customer.odoo.com"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              onBlur={(e) => setUrl(e.target.value.trim())}
               required
             />
-            <Input label="Database" value={db} onChange={(e) => setDb(e.target.value)} required />
             <Input
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              label="Database"
+              value={db}
+              onChange={(e) => setDb(e.target.value)}
+              onBlur={(e) => setDb(e.target.value.trim())}
               required
             />
+            <div>
+              <Input
+                label="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onBlur={(e) => setUsername(e.target.value.trim())}
+                required
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Case-sensitive, and copy-pasted values often carry a stray space — e.g.{" "}
+                <code className="rounded-sm bg-bg px-1">minhd</code>, not{" "}
+                <code className="rounded-sm bg-bg px-1">Minhd</code>.
+              </p>
+            </div>
             <Input
               label="API key"
               type="password"
               placeholder={existing ? "Re-enter to update" : ""}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
+              onBlur={(e) => setApiKey(e.target.value.trim())}
               required
             />
             {existing && (

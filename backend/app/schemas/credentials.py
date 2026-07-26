@@ -1,14 +1,36 @@
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+_URL_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 
 class OdooCredentialUpsert(BaseModel):
+    """Validated/normalized at this boundary (not just the frontend) so it
+    also holds for direct API calls: users very often copy-paste these
+    values and pick up stray leading/trailing whitespace, and Odoo
+    usernames are case-sensitive, so a pasted-with-different-case value
+    would silently fail auth rather than erroring here."""
+
     url: str
     db: str
     username: str
     api_key: str
+
+    @field_validator("url")
+    @classmethod
+    def _normalize_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not _URL_SCHEME_RE.match(value):
+            raise ValueError("Odoo URL must start with http:// or https://")
+        return value
+
+    @field_validator("db", "username", "api_key")
+    @classmethod
+    def _strip_whitespace(cls, value: str) -> str:
+        return value.strip()
 
 
 class OdooCredentialRead(BaseModel):

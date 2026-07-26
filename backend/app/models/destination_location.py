@@ -18,7 +18,15 @@ class DestinationLocation(Base):
 
     Locally created, so no Odoo `res.country`/`res.country.state` ids to
     reference — `state`/`country` are plain text, unlike the synced
-    entities' split id+cached-name address shape."""
+    entities' split id+cached-name address shape.
+
+    `lat`/`lng` are nullable: a manually-added destination always has
+    them (still required by DestinationLocationCreate — see schema), but
+    one auto-created from a stock.picking address that didn't already
+    match an existing destination (see app.services.picking_sync) has no
+    coordinate source at all, so it starts with both null until an admin
+    fills them in. A null coordinate is therefore also the "still needs
+    attention" signal — no separate flag is stored for that."""
 
     __tablename__ = "destination_locations"
 
@@ -33,8 +41,8 @@ class DestinationLocation(Base):
     state: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     country: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     zip: Mapped[str] = mapped_column(String(20), nullable=False, default="")
-    lat: Mapped[float] = mapped_column(nullable=False)
-    lng: Mapped[float] = mapped_column(nullable=False)
+    lat: Mapped[float | None] = mapped_column(nullable=True)
+    lng: Mapped[float | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

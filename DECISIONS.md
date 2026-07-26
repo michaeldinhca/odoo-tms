@@ -706,3 +706,127 @@ eventually manage the tenant list from Odoo instead of this CLI script
 (e.g., Odoo as the system of record for clients/subscriptions, syncing
 into or replacing this `tenants` table). Logged as a "Next up" item in
 TODO.md — no integration shape decided yet.
+
+---
+
+## 2026-07-27 — Odoo connection validation, sync-scoped pickers, destination auto-create, sync-warehouse-first for operation types
+
+A batch of several related fixes/features requested together after the
+user reviewed the live app, all in service of one theme: warehouses are
+the anchor everything else scopes to, and manually-typed Odoo fields need
+defensive validation since they're routinely copy-pasted.
+
+**Odoo credential fields validated/normalized at the schema boundary, not
+just the frontend:** `OdooCredentialUpsert` (`app/schemas/credentials.py`)
+now trims `url`/`db`/`username`/`api_key` and requires `url` to start with
+`http://`/`https://` (trailing slash stripped too, though
+`OdooClient.__init__` already handled that server-side — this keeps what's
+*stored* consistent with what's actually used). Username case is
+deliberately preserved, only whitespace is stripped — Odoo usernames are
+case-sensitive, and the frontend now shows an explicit example
+(`minhd`, not `Minhd`) so this doesn't read as a bug report waiting to
+happen. Validating here, not only in the React form, means a direct API
+call gets the same protection. This surfaced a real, previously-unexercised
+gap in the frontend's error handling: FastAPI's automatic 422 validation
+responses shape `detail` as an array of `{msg, loc, ...}` objects, not a
+plain string like every hand-raised `HTTPException(detail="...")` in this
+backend — the frontend's `request()` was only ever built for the string
+shape (nothing had triggered a Pydantic `field_validator` error before
+this), so a validation error would have rendered as unreadable/broken.
+Fixed with a new `extractErrorDetail()` that normalizes both shapes.
+
+**Route color palette expanded to 12, and a fixed swatch picker replaces
+the native `<input type="color">`:** the user asked for "about 12 obvious
+different colors" rather than an arbitrary hex — a full-spectrum picker
+lets someone pick two visually-similar shades that don't actually read as
+different routes on the map. `ROUTE_COLOR_PALETTE` (backend and a
+duplicated frontend copy, `frontend/src/lib/routeColors.ts` — no
+mechanism shares constants across that boundary in this project) is now
+12 hues swept around the wheel (red→orange→yellow→lime→green→emerald→
+cyan→blue→indigo→violet→fuchsia→pink) rather than 8. New
+`ColorSwatchPicker.tsx` renders them as clickable circles; existing
+routes' stored hex values are untouched by the palette change (a route's
+color is a literal stored string, not a palette index).
+
+**Warehouse pickers scoped to synced warehouses only:** the Routes page's
+warehouse selector, and the merged Warehouses & Operation Types page's
+"Warehouse" column, now only ever concern `is_synced=true` warehouses —
+an unsynced warehouse exists locally (from a general refresh) but isn't a
+real operating location yet, so letting someone arrange routes for one
+was misleading. Filtered client-side (`warehouses.filter(w =>
+w.is_synced)`) rather than changing `GET /warehouses`'s default, since
+the Warehouses management table itself still needs to show *every*
+warehouse (synced or not) so the sync checkbox has something to toggle.
+
+**Picking-address prefill capped at the 100 most recent pickings, not a
+500-item distinct-results cap:** previously scanned every `SyncedPicking`
+row for the tenant with no bound on the input, capping only the
+*deduplicated output* at 500. Changed to `ORDER BY last_seen_at DESC
+LIMIT 100` on the input query instead — a deliberate recency window (the
+100 most recent deliveries), not "however many distinct addresses exist
+across all of history." Since dedup only reduces a list, capping the
+input at 100 also means the output can never exceed 100, making the old
+output-side cap redundant.
+
+**`DestinationLocation.lat`/`lng` made nullable, and destinations now
+auto-create from new stock.picking addresses:** the user wants the
+destination library to grow itself from real delivery activity rather
+than requiring every entry to be typed by hand. After every
+`/planning/run` syncs its pickings, each order's address is compared
+(via a new shared `normalize_address_key`, the exact same normalization
+the picking-address prefill list already used) against the tenant's
+existing destinations; a non-matching, non-blank-customer-name address
+gets a new `DestinationLocation` created automatically. It cannot have
+real coordinates — Odoo delivery addresses have no lat/lon source any
+more than they did before (see the original "Warehouse lat/lng are
+admin-entered, not Odoo-synced" entry), and this project has a standing
+decision against adding a paid geocoding API just to backfill them. So
+`lat`/`lng` became nullable columns (migration `0011`) — manual creation
+via `POST .../destination-locations` still requires them (unchanged
+UX for someone typing in a real destination), only the auto-create path
+leaves them null. Null is also the *only* "needs attention" signal — no
+separate flag is stored, since a manually-created destination is
+guaranteed to have coordinates by the schema, so null unambiguously means
+"auto-created, not yet reviewed." `distance_km`, `RouteMap`'s marker/
+polyline rendering, and the destination library table all now treat a
+null coordinate as "can't compute/place this yet," not an error — a
+stop with no coordinates simply doesn't appear on the map or contribute
+to a route's polyline, and the library table flags it with a
+"Needs coordinates" badge.
+
+**Operation types scoped to synced warehouses ("sync warehouse first"):**
+auditing the sync pipeline while building this found that
+`SyncedWarehouse.is_synced` had **zero** effect on anything — only
+`SyncedOperationType.is_synced` gated what `/planning/run` actually
+fetched from Odoo. The user's ask ("sync warehouse first, operation
+types for those warehouses only") pointed at a real, previously-missing
+dependency between the two independently-toggled flags. `GET
+/operation-types` and both refresh/preview endpoints now filter to only
+operation types whose `warehouse_id` matches a currently-synced
+warehouse's `odoo_warehouse_id` (`app.services.sync_config.
+get_synced_warehouse_odoo_ids`) — computed at read/fetch time, not a
+stored flag, so un-syncing a warehouse doesn't delete its operation
+types' rows, they just stop appearing until it's synced again.
+`OperationTypeRead` gained `warehouse_name`, resolved the same way
+(joined against `synced_warehouses` at read time, not cached) so the list
+shows which warehouse each operation type actually belongs to instead of
+a bare Odoo id.
+
+**Warehouses and Operation Types merged onto one screen:** both screens
+existed to configure sync scope for the same underlying data, and the new
+warehouse-scoping above makes them a genuine parent/child relationship,
+not two independent lists — worth seeing together. Kept as the same
+route/file (`/warehouses`, `WarehousesPage.tsx`) rather than renaming,
+to minimize churn; heading text changed to "Warehouses & Operation
+Types." `RequirePermission` was extended to accept an array of
+permissions (`permission.some(hasPermission)`) so the merged route stays
+reachable by whoever has *either* `can_manage_warehouses` or
+`can_manage_operation_types` — a hard AND-of-both gate would have been a
+real regression for an account with only one of the two flags, which the
+two screens' original independent gating explicitly allowed. Each
+section inside the page still checks its own specific permission and
+hides independently, preserving the existing "booleans are independent,
+never bypassed" principle (see "Role vs. boolean permissions") at the
+section level even though the route-level gate is now an OR. `/operation-
+types` redirects to `/warehouses` for anyone with an old bookmark rather
+than falling through to the generic catch-all redirect.

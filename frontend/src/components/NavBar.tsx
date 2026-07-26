@@ -9,7 +9,9 @@ import { NavDropdown } from "./NavDropdown";
 interface NavLinkDef {
   to: string;
   label: string;
-  permission?: PermissionFlag;
+  /** A single flag, or (like the merged Warehouses & Operation Types
+   * page) several — visible if the user has any one of them. */
+  permission?: PermissionFlag | PermissionFlag[];
   adminOnly?: boolean;
 }
 
@@ -29,8 +31,11 @@ const NAV: NavEntry[] = [
     label: "Setup",
     items: [
       { to: "/connection", label: "Odoo Connection", permission: "can_manage_connection" },
-      { to: "/operation-types", label: "Operation Types", permission: "can_manage_operation_types" },
-      { to: "/warehouses", label: "Warehouses", permission: "can_manage_warehouses" },
+      {
+        to: "/warehouses",
+        label: "Warehouses",
+        permission: ["can_manage_warehouses", "can_manage_operation_types"],
+      },
       { to: "/destinations", label: "Destinations", permission: "can_manage_warehouses" },
       { to: "/warehouse-routes", label: "Routes", permission: "can_manage_warehouses" },
       { to: "/vehicles", label: "Vehicles", permission: "can_manage_fleet" },
@@ -66,6 +71,7 @@ export default function NavBar() {
 
   function isVisible(link: NavLinkDef): boolean {
     if (link.adminOnly) return isAdmin;
+    if (Array.isArray(link.permission)) return link.permission.some(hasPermission);
     if (link.permission) return hasPermission(link.permission);
     return true;
   }

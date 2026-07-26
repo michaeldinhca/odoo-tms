@@ -10,7 +10,6 @@ import DestinationLocationsPage from "./pages/DestinationLocationsPage";
 import DriversPage from "./pages/DriversPage";
 import LoadPlanningPage from "./pages/LoadPlanningPage";
 import LoginPage from "./pages/LoginPage";
-import OperationTypesPage from "./pages/OperationTypesPage";
 import PlanningPage from "./pages/PlanningPage";
 import UsersPage from "./pages/UsersPage";
 import VehiclesPage from "./pages/VehiclesPage";
@@ -34,21 +33,15 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/operation-types"
-            element={
-              <RequireAuth>
-                <RequirePermission permission="can_manage_operation_types">
-                  <OperationTypesPage />
-                </RequirePermission>
-              </RequireAuth>
-            }
-          />
+          {/* Operation Types merged into the Warehouses page — redirect
+              anyone with an old bookmark/link rather than falling through
+              silently to the generic catch-all below. */}
+          <Route path="/operation-types" element={<Navigate to="/warehouses" replace />} />
           <Route
             path="/warehouses"
             element={
               <RequireAuth>
-                <RequirePermission permission="can_manage_warehouses">
+                <RequirePermission permission={["can_manage_warehouses", "can_manage_operation_types"]}>
                   <WarehousesPage />
                 </RequirePermission>
               </RequireAuth>

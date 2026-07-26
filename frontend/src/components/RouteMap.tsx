@@ -2,11 +2,19 @@ import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Fragment } from "react";
 import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
-import type { WarehouseRoute } from "../api/types";
+import type { WarehouseRoute, WarehouseRouteStop } from "../api/types";
 
 interface RouteMapProps {
   warehouse: { name: string; lat: number; lng: number };
   routes: WarehouseRoute[];
+}
+
+/** A stop auto-created from a stock.picking address (see DECISIONS.md)
+ * may have no coordinates yet — it just can't be placed on the map until
+ * an admin fills them in, same as it can't have a distance computed. */
+function stopPosition(stop: WarehouseRouteStop): [number, number] | null {
+  const { lat, lng } = stop.destination;
+  return lat != null && lng != null ? [lat, lng] : null;
 }
 
 /** Small inline-HTML/CSS circle markers via L.divIcon, not Leaflet's
@@ -59,10 +67,9 @@ export function RouteMap({ warehouse, routes }: RouteMapProps) {
           <Popup>{warehouse.name}</Popup>
         </Marker>
         {routes.map((route) => {
-          const stopPositions: [number, number][] = route.stops.map((stop) => [
-            stop.destination.lat,
-            stop.destination.lng,
-          ]);
+          const stopPositions = route.stops
+            .map(stopPosition)
+            .filter((pos): pos is [number, number] => pos !== null);
           const linePositions: [number, number][] = [center, ...stopPositions];
 
           return (
@@ -70,25 +77,25 @@ export function RouteMap({ warehouse, routes }: RouteMapProps) {
               {stopPositions.length > 0 && (
                 <Polyline positions={linePositions} pathOptions={{ color: route.color, weight: 3 }} />
               )}
-              {route.stops.map((stop, index) => (
-                <Marker
-                  key={stop.id}
-                  position={[stop.destination.lat, stop.destination.lng]}
-                  icon={stopIcon(route.color, index + 1)}
-                >
-                  <Popup>
-                    <strong>{route.name}</strong> — stop {index + 1}
-                    <br />
-                    {stop.destination.name}
-                    {stop.distance_km != null && (
-                      <>
-                        <br />
-                        {stop.distance_km.toFixed(1)} km from warehouse
-                      </>
-                    )}
-                  </Popup>
-                </Marker>
-              ))}
+              {route.stops.map((stop, index) => {
+                const position = stopPosition(stop);
+                if (!position) return null;
+                return (
+                  <Marker key={stop.id} position={position} icon={stopIcon(route.color, index + 1)}>
+                    <Popup>
+                      <strong>{route.name}</strong> — stop {index + 1}
+                      <br />
+                      {stop.destination.name}
+                      {stop.distance_km != null && (
+                        <>
+                          <br />
+                          {stop.distance_km.toFixed(1)} km from warehouse
+                        </>
+                      )}
+                    </Popup>
+                  </Marker>
+                );
+              })}
             </Fragment>
           );
         })}

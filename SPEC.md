@@ -43,9 +43,9 @@ Tenant management is via `python -m app.manage_tenants
 |----------------|-------------|--------------------------------------------------|
 | id             | UUID (PK)   |                                                    |
 | tenant_id      | UUID (FK)   | references `tenants.id`                          |
-| url            | text        | Odoo base URL                                     |
-| db             | text        | Odoo database name                                |
-| username       | text        |                                                    |
+| url            | text        | Odoo base URL — trimmed, trailing slash stripped, and validated to start with `http://`/`https://` by `OdooCredentialUpsert` (see DECISIONS.md) |
+| db             | text        | Odoo database name — trimmed                      |
+| username       | text        | trimmed only, case preserved — Odoo usernames are case-sensitive |
 | encrypted_key  | text        | Fernet-encrypted Odoo API key — never plaintext   |
 | state          | text        | `draft`/`active`/`error` (see DECISIONS.md "Odoo connection state machine"); `error` is reserved, not yet set anywhere |
 | activated_at   | timestamptz, nullable | set the first time `state` transitions to `active` |
@@ -139,6 +139,15 @@ type / warehouse sync gating" in DECISIONS.md).
 
 Unique on `(tenant_id, odoo_operation_type_id)`.
 
+**Scoped to synced warehouses at read time** (`GET`/refresh/preview all
+filter on this — see DECISIONS.md "Sync warehouse first"): a row whose
+`warehouse_id` doesn't match a currently-synced `synced_warehouses.
+odoo_warehouse_id` (including `warehouse_id IS NULL`) is excluded from
+every response, though never deleted — it reappears automatically if that
+warehouse is synced again. `warehouse_name` in the API response
+(`OperationTypeRead`) is resolved from `synced_warehouses` at read time,
+not a stored column.
+
 ### `synced_warehouses`
 
 Mirrors a tenant's Odoo `stock.warehouse` records, address split the same
@@ -189,10 +198,21 @@ warehouses' routes at once (`warehouse_routes`/`route_stops` below).
 | state       | text              | default `""` — plain text, not a Odoo id+name pair (locally created, no Odoo `res.country.state` to reference) |
 | country     | text              | default `""`, same reasoning as `state`        |
 | zip         | text              | default `""`                                   |
-| lat         | float             | required                                       |
-| lng         | float             | required                                       |
+| lat         | float, nullable   | required when created via `POST .../destination-locations` (manual entry); `null` when auto-created from a picking address (see below) — see DECISIONS.md |
+| lng         | float, nullable   | same as `lat` above                            |
 | created_at  | timestamptz       |                                                 |
 | updated_at  | timestamptz       |                                                 |
+
+**Auto-created from stock.picking addresses:** after every `/planning/run`
+syncs its pickings, each order's resolved address is compared (via
+`app.services.destination_locations.normalize_address_key` — the same
+normalize-then-compare used by the picking-addresses prefill list below)
+against the tenant's existing destinations; if none match, a new
+destination is created automatically with `lat`/`lng` both `null` (no
+coordinate source exists for a picking address — see DECISIONS.md).
+Orders with no resolved customer name are skipped. This is the same
+matching definition the picking-address prefill endpoint uses, so
+"already exists" means the same thing in both places.
 
 Deleting a destination cascades: it's removed from every route (any
 warehouse) it was a stop on (the stop row is deleted, not blocked) — see
@@ -428,9 +448,9 @@ address context needed to actually dispatch it, not just the picking ID.
 | POST   | `/tenants/{id}/credentials/test`     | test XML-RPC connection; also (re-)detects and persists Odoo server version | implemented |
 | GET    | `/tenants/{id}/credentials/companies`| live-list the Odoo instance's `res.company` records | implemented |
 | PUT    | `/tenants/{id}/credentials/company`  | select (or clear) the company planning is scoped to; transitions `state` `draft`→`active` | implemented |
-| GET    | `/tenants/{id}/operation-types`      | list synced operation types (local); `?include_archived=true` to include archived rows | implemented |
-| POST   | `/tenants/{id}/operation-types/refresh/preview` | dry-run diff against Odoo — `{new, removed, unchanged_count}`, writes nothing; requires `state=="active"` | implemented |
-| POST   | `/tenants/{id}/operation-types/refresh` | pull `stock.picking.type` from Odoo, upsert (preserves existing `is_synced`/`active`); requires `state=="active"` | implemented |
+| GET    | `/tenants/{id}/operation-types`      | list synced operation types (local), scoped to currently-synced warehouses (see DECISIONS.md "Sync warehouse first"); `?include_archived=true` to include archived rows | implemented |
+| POST   | `/tenants/{id}/operation-types/refresh/preview` | dry-run diff against Odoo, scoped to synced warehouses — `{new, removed, unchanged_count}`, writes nothing; requires `state=="active"` | implemented |
+| POST   | `/tenants/{id}/operation-types/refresh` | pull `stock.picking.type` from Odoo scoped to synced warehouses, upsert (preserves existing `is_synced`/`active`); requires `state=="active"` | implemented |
 | PUT    | `/tenants/{id}/operation-types/{row_id}/sync` | toggle `is_synced` for one operation type    | implemented |
 | PUT    | `/tenants/{id}/operation-types/{row_id}/archive` | toggle `active` (archive/unarchive)         | implemented |
 | DELETE | `/tenants/{id}/operation-types/{row_id}` | delete; blocked (400) if referenced by a `synced_pickings` row — archive instead | implemented |
@@ -449,7 +469,7 @@ address context needed to actually dispatch it, not just the picking ID.
 | PUT    | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}/stops/reorder` | reorder — body must be exactly the route's current stop set (400 if not); reassigns `stop_order` `0..N-1` | implemented |
 | DELETE | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}/stops/{destination_id}` | remove one stop from the route | implemented |
 | GET    | `/tenants/{id}/destination-locations` | list the tenant's destination library                       | implemented |
-| GET    | `/tenants/{id}/destination-locations/picking-addresses` | distinct customer/address combos pulled from the tenant's already-synced `synced_pickings`, for prefilling a new destination's name/address fields (no live Odoo call) | implemented |
+| GET    | `/tenants/{id}/destination-locations/picking-addresses` | distinct customer/address combos from the tenant's 100 most recently seen `synced_pickings`, for prefilling a new destination's name/address fields (no live Odoo call) | implemented |
 | POST   | `/tenants/{id}/destination-locations` | create a destination                                          | implemented |
 | PUT    | `/tenants/{id}/destination-locations/{row_id}` | partial update (only provided fields applied)          | implemented |
 | DELETE | `/tenants/{id}/destination-locations/{row_id}` | delete; cascades — removes it from every route (any warehouse) it was a stop on, rather than blocking (see DECISIONS.md) | implemented |

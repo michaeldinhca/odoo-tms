@@ -88,6 +88,27 @@ class ApiError extends Error {
   }
 }
 
+/** FastAPI's plain `HTTPException(detail="...")` responses (used
+ * everywhere in this backend) have a string `detail`, but its automatic
+ * Pydantic validation-error responses (422s — e.g. from a `field_validator`
+ * raising `ValueError`) have `detail` as an array of `{msg, loc, ...}`
+ * objects instead. Passing that array straight through as an Error
+ * `message` renders as unreadable/broken in the UI — normalize both
+ * shapes into one readable string here. */
+function extractErrorDetail(body: unknown): string | undefined {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item: unknown) => {
+        const msg = (item as { msg?: unknown } | null)?.msg;
+        return typeof msg === "string" ? msg.replace(/^Value error, /, "") : JSON.stringify(item);
+      })
+      .join("; ");
+  }
+  return undefined;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -110,7 +131,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, body.detail ?? response.statusText);
+    throw new ApiError(response.status, extractErrorDetail(body) ?? response.statusText);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;

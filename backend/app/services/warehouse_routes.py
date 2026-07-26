@@ -3,14 +3,18 @@ accent color plus a 3-color status scale (see design.md) — no categorical
 palette existed for "N visually distinct things" until routes needed one."""
 
 ROUTE_COLOR_PALETTE: list[str] = [
-    "#2563EB",  # blue
     "#DC2626",  # red
-    "#059669",  # green
-    "#D97706",  # amber
-    "#7C3AED",  # violet
-    "#DB2777",  # pink
-    "#0891B2",  # cyan
+    "#EA580C",  # orange
+    "#CA8A04",  # yellow
     "#65A30D",  # lime
+    "#16A34A",  # green
+    "#059669",  # emerald
+    "#0891B2",  # cyan
+    "#2563EB",  # blue
+    "#4F46E5",  # indigo
+    "#7C3AED",  # violet
+    "#C026D3",  # fuchsia
+    "#DB2777",  # pink
 ]
 
 

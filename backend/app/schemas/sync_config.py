@@ -5,7 +5,11 @@ from pydantic import BaseModel, ConfigDict
 
 
 class OperationTypeRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """`warehouse_name` is assembled by the router (resolved from
+    `warehouse_id` against the tenant's synced warehouses at read time),
+    not a stored column — same reasoning as every other computed-not-
+    cached value in this project (a warehouse can be renamed after an
+    operation type was last synced)."""
 
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -13,6 +17,7 @@ class OperationTypeRead(BaseModel):
     name: str
     code: str
     warehouse_id: int | None
+    warehouse_name: str | None
     is_synced: bool
     active: bool
     last_seen_at: datetime | None

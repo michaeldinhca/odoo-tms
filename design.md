@@ -253,28 +253,44 @@ needed to resolve a bigger array in more cases.
 - **Route color palette** — the first categorical (N-distinct-things)
   palette in this project; everything above is either the single `accent`
   or the 3-stop status scale, neither of which fits "give each of a
-  warehouse's routes its own color." Fixed 8-color list in
-  `backend/app/services/warehouse_routes.py`:
+  warehouse's routes its own color." Fixed list in
+  `backend/app/services/warehouse_routes.py` (and a duplicated copy at
+  `frontend/src/lib/routeColors.ts` — no mechanism shares constants
+  across that boundary in this project; keep both in sync by hand),
+  **expanded from 8 to 12 hues on 2026-07-27** at the user's request for
+  "about 12 obvious different colors" — the original 8 included `amber`
+  right next to `orange`-ish colors that didn't read as clearly distinct
+  at small map-marker size, so the set was redrawn as a clean sweep
+  around the hue wheel instead of ad hoc additions:
 
   | Color | Hex |
   |---|---|
-  | blue | `#2563EB` |
   | red | `#DC2626` |
-  | green | `#059669` |
-  | amber | `#D97706` |
-  | violet | `#7C3AED` |
-  | pink | `#DB2777` |
-  | cyan | `#0891B2` |
+  | orange | `#EA580C` |
+  | yellow | `#CA8A04` |
   | lime | `#65A30D` |
+  | green | `#16A34A` |
+  | emerald | `#059669` |
+  | cyan | `#0891B2` |
+  | blue | `#2563EB` |
+  | indigo | `#4F46E5` |
+  | violet | `#7C3AED` |
+  | fuchsia | `#C026D3` |
+  | pink | `#DB2777` |
 
   Picked for visual distinctness on a light OpenStreetMap basemap, not
   individually WCAG-contrast-verified against arbitrary map tile
   imagery — a known gap, same caveat class as the "no interactive browser
   verification" note below. A route's color is auto-assigned server-side
   (first palette color not already used by another route at the same
-  warehouse) unless the admin overrides it via a native
-  `<input type="color">` on the Routes page — no custom color-picker
-  component was built.
+  warehouse) unless the admin overrides it via the new
+  `ColorSwatchPicker.tsx` (12 clickable circles, one per palette color) —
+  **replaced the native `<input type="color">` on 2026-07-27**: a
+  full-spectrum picker let someone choose two shades similar enough to
+  be indistinguishable as different routes, defeating the point of a
+  fixed distinct-hues palette in the first place. A route's stored color
+  is a literal hex string, not a palette index, so this swap didn't
+  affect any already-created route's displayed color.
 
 - **`RouteMap.tsx`** (`frontend/src/components/RouteMap.tsx`) — first use
   of a mapping library in this project: `leaflet` + `react-leaflet@^4` +

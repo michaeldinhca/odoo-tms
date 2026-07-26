@@ -3,9 +3,13 @@ import { Navigate } from "react-router-dom";
 import { useCurrentUser, type PermissionFlag } from "../context/CurrentUserContext";
 
 interface RequirePermissionProps {
-  /** One of the six can_* flags. Omit and pass `adminOnly` instead for
-   * the Users page's hard role gate. */
-  permission?: PermissionFlag;
+  /** One of the six can_* flags, or several — an array means "any one of
+   * these is enough" (used by the combined Warehouses & Operation Types
+   * page, reachable with either can_manage_warehouses or
+   * can_manage_operation_types; the page itself hides whichever section
+   * the current user actually lacks). Omit and pass `adminOnly` instead
+   * for the Users page's hard role gate. */
+  permission?: PermissionFlag | PermissionFlag[];
   /** Users page only — `role`, not a boolean, is the gate there (see
    * DECISIONS.md "Role vs. boolean permissions"). */
   adminOnly?: boolean;
@@ -26,7 +30,13 @@ export default function RequirePermission({
 
   if (loading) return null;
 
-  const allowed = adminOnly ? isAdmin : permission ? hasPermission(permission) : true;
+  const allowed = adminOnly
+    ? isAdmin
+    : Array.isArray(permission)
+      ? permission.some(hasPermission)
+      : permission
+        ? hasPermission(permission)
+        : true;
   if (!allowed) return <Navigate to="/planning" replace />;
 
   return children;

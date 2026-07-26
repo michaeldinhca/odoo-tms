@@ -13,6 +13,9 @@ from app.schemas.destination_location import (
     DestinationLocationUpdate,
     PickingAddressOption,
 )
+from app.services.destination_locations import normalize_address_key
+
+PICKING_ADDRESS_SCAN_LIMIT = 100
 
 router = APIRouter(
     prefix="/tenants/{tenant_id}/destination-locations", tags=["destination-locations"]
@@ -58,50 +61,50 @@ def list_picking_address_options(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> list[dict]:
-    """Distinct customer/address combos pulled from the tenant's
-    already-synced SyncedPicking rows, to prefill a new destination's
+    """Distinct customer/address combos pulled from the tenant's 100 most
+    recently seen SyncedPicking rows, to prefill a new destination's
     name/address fields — reuses the delivery address stock.picking sync
     already resolves, rather than a new live Odoo partner-browse call
     (SyncedPicking has no partner id to key a proper link/unlink feature
     on the way Vehicles/Drivers link to Odoo — see DECISIONS.md).
 
-    Deduped in Python, not SQL: Odoo's free-text address fields aren't
-    normalized at sync time (case/whitespace can drift between pickings
-    for the same customer), and this needs to run against both Postgres
-    and the SQLite test fixture, so a portable normalize-then-dedupe pass
-    is simpler than a dialect-specific DISTINCT ON. Ordered by
-    `last_seen_at` desc first so which row represents a given combo is
-    deterministic, not query-plan-dependent."""
+    Deduped in Python, not SQL, using the same `normalize_address_key` the
+    auto-create-on-sync path uses (see app.services.picking_sync): Odoo's
+    free-text address fields aren't normalized at sync time (case/
+    whitespace can drift between pickings for the same customer), and
+    this needs to run against both Postgres and the SQLite test fixture,
+    so a portable normalize-then-dedupe pass is simpler than a
+    dialect-specific DISTINCT ON. Ordered by `last_seen_at` desc and
+    capped at the 100 most recent pickings — deliberately a recency
+    window, not "however many distinct addresses exist," so this stays a
+    quick, small prefill list rather than growing unbounded with tenant
+    history."""
     _require_same_tenant(tenant_id, current_user)
 
     pickings = (
         db.query(SyncedPicking)
         .filter_by(tenant_id=tenant_id)
         .order_by(SyncedPicking.last_seen_at.desc())
+        .limit(PICKING_ADDRESS_SCAN_LIMIT)
         .all()
     )
 
     seen: set[tuple[str, ...]] = set()
     options: list[SyncedPicking] = []
     for picking in pickings:
-        key = tuple(
-            value.strip().lower()
-            for value in (
-                picking.customer_name,
-                picking.street,
-                picking.street2,
-                picking.city,
-                picking.state_name,
-                picking.country_name,
-                picking.zip,
-            )
+        key = normalize_address_key(
+            picking.customer_name,
+            picking.street,
+            picking.street2,
+            picking.city,
+            picking.state_name,
+            picking.country_name,
+            picking.zip,
         )
         if key in seen:
             continue
         seen.add(key)
         options.append(picking)
-        if len(options) >= 500:
-            break
 
     return [
         {

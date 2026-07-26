@@ -9,6 +9,7 @@ from app.api.deps import CurrentUser, get_db, require_permission
 from app.models.odoo_credential import TenantOdooCredential
 from app.models.planning_run import PlanningRun
 from app.schemas.planning import PlanningRunRequest, PlanningRunResult
+from app.services.destination_locations import auto_create_destinations_from_orders
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
 from app.services.picking_sync import upsert_synced_pickings
@@ -84,6 +85,8 @@ def run_planning(
 
     orders = result.pop("orders", [])
     upsert_synced_pickings(db, payload.tenant_id, orders)
+    auto_create_destinations_from_orders(db, payload.tenant_id, orders)
+    db.commit()
 
     run.status = "done"
     run.result_json = result
