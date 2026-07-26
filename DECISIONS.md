@@ -632,3 +632,77 @@ warehouse property; editing it from the Destinations page (as the prior
 batch shipped it) was the wrong screen. The backend endpoint
 (`PUT .../warehouses/{id}/coordinates`) is unchanged — only the frontend
 form's location moved.
+
+---
+
+## 2026-07-26 — Tenant subscription tracking + script-based tenant management
+
+**Decision:** Added subscription/billing metadata to `Tenant`
+(`status`, `plan_name`, `billing_email`, `expire_date`,
+`warning_period_days`, `notes`) as prep for a future SaaS/billing mode.
+Removed the existing `POST /tenants` and `GET /tenants` HTTP endpoints
+entirely and replaced tenant management with a new CLI script,
+`python -m app.manage_tenants` (`create`/`list`/`update`).
+
+**Why remove the HTTP endpoints instead of gating them:** auditing them
+while building this found `POST /tenants` and `GET /tenants` had **zero**
+auth — `Depends(get_db)` only, no `Depends(get_current_user)` or any
+permission check, despite SPEC.md's stale doc calling `GET /tenants`
+"admin"-gated. Anyone with network access could create tenant shells or
+list every tenant's name. A repo-wide grep confirmed the frontend never
+calls either endpoint (only tenant-*scoped* `/tenants/{id}/...` routes
+are used, via the JWT-derived `tenant_id`). Given the user explicitly
+asked to manage tenants via script for now, gating these endpoints would
+have kept an unused, no-longer-needed attack surface around for no
+benefit — deleting `app/api/tenants.py`/`app/schemas/tenant.py` was
+simpler and safer than adding auth to code nothing calls.
+
+**No platform-superadmin role exists, and this batch doesn't add one:**
+`require_admin` gates tenant-*scoped* admin actions (user management
+within one's own tenant) — there was and still is no cross-tenant role.
+`app/manage_tenants.py` runs with direct DB access (`SessionLocal`, same
+pattern as the existing `app/seed.py`), not through the HTTP API, so it
+doesn't need one either. `app/seed.py` itself is untouched — it stays a
+one-time dev bootstrap (hardcoded `admin@example.com`, no-ops if that
+email exists); `manage_tenants.py` is the general-purpose, repeatable
+tool for onboarding real clients and updating their subscription state.
+
+**`status` is a manual override, not a computed value:** `active`/
+`suspended`/`cancelled`, and it always wins over date math in
+`compute_subscription_state` — an operator suspending a tenant for
+non-payment shouldn't be silently overridden by a still-future
+`expire_date`. There's no separate `trial` status: a trial is just a
+tenant with `expire_date` set to the trial's end date, which the
+date-driven `warning`/`expired` states already cover without a fourth
+manual value.
+
+**`warning_date` and subscription state are computed, not stored:** same
+reasoning as every other derived value in this project this week
+(destination-to-warehouse distance, route stop distances) — either
+`expire_date` or `warning_period_days` can change after the fact, and a
+cached value would silently go stale. `app.services.tenant_subscription`
+computes both at read time.
+
+**No enforcement yet — deliberately:** an expired or suspended tenant's
+users are **not** blocked from logging in or using the API. There's no
+billing/payment integration behind these fields yet, and no
+dispute/grace-period process — flipping on a hard block now risks
+locking out a real client over a date field with nothing to appeal to.
+Revisit once real billing exists. Logged as a TODO.
+
+**Ready-to-use fields chosen, and what was deliberately left out:**
+included `plan_name` (free-text, no separate plans table — no pricing
+model exists yet to normalize against), `billing_email` (a contact
+distinct from operational user accounts, for when invoicing/warning
+emails eventually get built), and `notes` (free-text, for the operator's
+own renewal/exception tracking). Deliberately did **not** add: seat/usage
+limits, a real plans/pricing table, payment-provider fields (Stripe
+customer id, etc.), or an audit-log/history table for subscription
+changes — none of these have a concrete near-term use yet, and adding
+them now would be speculative scaffolding with no consumer.
+
+**Future direction, not built now:** the user's stated intent is to
+eventually manage the tenant list from Odoo instead of this CLI script
+(e.g., Odoo as the system of record for clients/subscriptions, syncing
+into or replacing this `tenants` table). Logged as a "Next up" item in
+TODO.md — no integration shape decided yet.

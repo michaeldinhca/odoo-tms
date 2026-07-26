@@ -8,7 +8,6 @@ from app.api import (
     drivers,
     operation_types,
     planning,
-    tenants,
     users,
     vehicles,
     warehouse_routes,
@@ -27,7 +26,6 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
-app.include_router(tenants.router)
 app.include_router(users.router)
 app.include_router(credentials.router)
 app.include_router(operation_types.router)

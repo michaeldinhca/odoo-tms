@@ -10,11 +10,32 @@ changes.
 
 ### `tenants`
 
-| column       | type        | notes                          |
-|--------------|-------------|---------------------------------|
-| id           | UUID (PK)   |                                  |
-| name         | text        | display name                    |
-| created_at   | timestamptz |                                  |
+| column               | type        | notes                          |
+|-----------------------|-------------|---------------------------------|
+| id                    | UUID (PK)   |                                  |
+| name                  | text        | display name                    |
+| status                | text        | `active`/`suspended`/`cancelled`, default `active` — manual override, independent of the date columns below (see DECISIONS.md) |
+| plan_name             | text        | default `""` — free-text plan/tier label, no separate plans table |
+| billing_email         | text, nullable | contact for invoices/warnings, separate from operational user accounts |
+| expire_date           | timestamptz, nullable | subscription end date; `null` = no tracked expiry |
+| warning_period_days   | integer, nullable | how many days before `expire_date` the "warning" state starts; falls back to `DEFAULT_WARNING_PERIOD_DAYS` (14) when unset |
+| notes                 | text        | default `""` — internal operator notes |
+| created_at            | timestamptz |                                  |
+
+Subscription/billing metadata, not yet enforced anywhere — no login/API
+blocking on an expired or suspended tenant (tracking only, until a real
+billing flow exists — see DECISIONS.md). `warning_date` and the overall
+subscription state (`active`/`warning`/`expired`/`suspended`/`cancelled`)
+are **not** stored columns — computed at read time by
+`app.services.tenant_subscription` (`compute_warning_date`/
+`compute_subscription_state`) so they can never go stale relative to
+`expire_date`/`warning_period_days`/`status`.
+
+No public HTTP endpoints exist for tenant CRUD (the earlier
+unauthenticated `POST/GET /tenants` were removed — see DECISIONS.md).
+Tenant management is via `python -m app.manage_tenants
+{create,list,update}` — see TODO.md for the planned future direction
+(managing the tenant list from Odoo instead).
 
 ### `tenant_odoo_credentials`
 
@@ -396,8 +417,6 @@ address context needed to actually dispatch it, not just the picking ID.
 | POST   | `/auth/login`                        | JWT login                                          | implemented |
 | GET    | `/auth/me`                           | current user's own role/permissions (any authenticated user, not admin-gated) | implemented |
 | PUT    | `/auth/password`                     | self-service password change (requires current password) | implemented |
-| GET    | `/tenants`                           | list tenants (admin)                               | implemented |
-| POST   | `/tenants`                           | create tenant                                      | implemented |
 | GET    | `/tenants/{id}/users`                | list users (requires `role=="admin"`)              | implemented |
 | POST   | `/tenants/{id}/users`                | create a user + set initial password (no invite-email flow — see TODO.md); requires `role=="admin"` | implemented |
 | PUT    | `/tenants/{id}/users/{user_id}`      | update email/role/permissions (partial); blocks demoting the last admin; requires `role=="admin"` | implemented |
@@ -453,7 +472,10 @@ address context needed to actually dispatch it, not just the picking ID.
 | POST   | `/planning/run`                      | trigger a planning run for a tenant                | implemented |
 | GET    | `/planning/results/{id}`             | fetch a planning run's result                      | implemented |
 
-No user self-registration/invite endpoint exists — see TODO.md.
+No user self-registration/invite endpoint exists — see TODO.md. No tenant
+CRUD endpoint exists either — tenant management is via `python -m
+app.manage_tenants` (see the `tenants` table entry above and
+DECISIONS.md).
 
 Every endpoint under `/tenants/{id}/credentials`, `/operation-types`,
 `/warehouses`, `/destination-locations`, `/vehicles`, and `/drivers`

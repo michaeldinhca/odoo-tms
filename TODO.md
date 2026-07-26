@@ -7,7 +7,11 @@ gets done.
 ## Backend
 
 - [x] Multi-tenant JWT auth
-- [x] Tenant CRUD endpoints
+- [x] Tenant CRUD endpoints. **Removed 2026-07-26** — audited while adding
+      subscription tracking and found `POST`/`GET /tenants` had zero auth
+      (not actually admin-gated, despite SPEC.md's stale claim) and zero
+      frontend usage; replaced with `python -m app.manage_tenants` (see
+      below) rather than gating unused code
 - [x] Encrypted Odoo credential storage (Fernet) — store/update/never-return-plaintext
 - [x] Odoo XML-RPC client wrapper + test-connection endpoint
 - [x] FFD bin-packing module (capacity-based, no zones)
@@ -124,6 +128,19 @@ gets done.
       for prefilling a new destination's name/address fields — not a live
       Odoo partner browse, since `SyncedPicking` has no partner id to key
       a proper link/unlink feature on (see DECISIONS.md)
+- [x] Tenant subscription tracking, prep for SaaS/billing mode: new
+      `status`/`plan_name`/`billing_email`/`expire_date`/
+      `warning_period_days`/`notes` columns on `tenants`.
+      `app.services.tenant_subscription` computes `warning_date` and an
+      overall state (`active`/`warning`/`expired`/`suspended`/`cancelled`)
+      at read time rather than storing them — `status` is a manual
+      override that always wins over the date math (see DECISIONS.md).
+      Not enforced anywhere yet (no login/API blocking on an expired or
+      suspended tenant — tracking only, until real billing exists).
+      Removed the unauthenticated, unused `POST`/`GET /tenants` HTTP
+      endpoints and replaced tenant management with a new CLI,
+      `python -m app.manage_tenants create|list|update` (list supports
+      `--state` filtering to quickly find tenants needing attention)
 
 ## Frontend
 
@@ -324,6 +341,33 @@ gets done.
 
 ## Next up
 
+- [ ] **Manage the tenant list from Odoo** — the user's stated future
+      direction: for now, tenant onboarding/subscription management is a
+      CLI script (`python -m app.manage_tenants`, see above), but they
+      intend to eventually manage the client/tenant list from Odoo
+      itself instead. No integration shape decided yet — open questions
+      to resolve when this is picked up: is Odoo the system of record
+      (this project's `tenants` table becomes a synced mirror, like
+      `synced_warehouses`/`synced_operation_types` already are for a
+      *tenant's own* Odoo data) or just a management UI that calls back
+      into this project's own tenant data; which Odoo model would
+      represent a tenant/subscription (a custom model, or repurposing
+      `res.partner` + a subscription/contract app); and whether this
+      needs its own dedicated "platform" Odoo instance separate from
+      each tenant's own connected Odoo instance (today's
+      `tenant_odoo_credentials` is explicitly one-per-tenant, scoped to
+      that tenant's own data — a platform-level Odoo connection for
+      managing tenants themselves would be a new, different concept, not
+      a reuse of that table)
+- [ ] Enforce tenant subscription state — today `status`/`expire_date`/
+      `warning_period_days` are tracked and computed
+      (`app.services.tenant_subscription`) but nothing is blocked: an
+      expired or suspended tenant's users can still log in and use the
+      API normally. Deliberately deferred until real billing/payment
+      exists (see DECISIONS.md) — revisit alongside whatever billing
+      integration eventually gets built, including what a blocked user
+      should actually see (a clear "subscription expired, contact us"
+      state, not a generic error)
 - [x] Map visualization for route arrangement — the user asked for this
       explicitly, then confirmed and refined the requirements after
       reviewing the shipped destination-location library: ordered stops
