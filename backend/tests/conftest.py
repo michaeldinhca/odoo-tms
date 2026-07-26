@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
-from app.models.destination_location import DestinationLocation, WarehouseDestinationLocation
+from app.models.destination_location import DestinationLocation
 from app.models.driver import Driver
 from app.models.odoo_credential import TenantOdooCredential
 from app.models.synced_operation_type import SyncedOperationType
@@ -12,6 +12,7 @@ from app.models.synced_picking import SyncedPicking
 from app.models.synced_warehouse import SyncedWarehouse
 from app.models.user import User
 from app.models.vehicle import Vehicle
+from app.models.warehouse_route import RouteStop, WarehouseRoute
 
 _ALL_MODELS = (
     TenantOdooCredential,
@@ -22,7 +23,8 @@ _ALL_MODELS = (
     Driver,
     User,
     DestinationLocation,
-    WarehouseDestinationLocation,
+    WarehouseRoute,
+    RouteStop,
 )
 _SYNC_MODELS = _ALL_MODELS
 _FLEET_MODELS = _ALL_MODELS

@@ -104,7 +104,26 @@ gets done.
       `warehouses.py` (set coordinates; list/add/remove a warehouse's route
       set); deleting a destination cascades out of every route set instead
       of blocking. Reuses `can_manage_warehouses` rather than a new
-      permission flag (see DECISIONS.md)
+      permission flag (see DECISIONS.md). **Superseded the same day** — the
+      flat route set below was replaced with ordered, colored Routes; the
+      destination library itself and admin-entered warehouse `lat`/`lng`
+      are unchanged
+- [x] Replaced the flat warehouse route set with named, colored
+      `warehouse_routes` + ordered `route_stops` (drops
+      `warehouse_destination_locations` outright via a migration with a
+      defensive empty-check guard — no real data existed yet). New
+      `warehouse_routes.py` router: CRUD for routes (color auto-assigned
+      from a fixed palette, avoiding a color already in use at that
+      warehouse); bulk-add stops (silently skips duplicates, reports which
+      were skipped); reorder (full-list replace, 400 on a mismatched set);
+      remove one stop. `destination_locations.py`/`warehouses.py`'s delete
+      cascades updated to clean up `route_stops` instead of the old join
+      rows. New `GET .../destination-locations/picking-addresses` —
+      distinct customer/address combos from the tenant's already-synced
+      `SyncedPicking` rows (deduped in Python, normalized case/whitespace),
+      for prefilling a new destination's name/address fields — not a live
+      Odoo partner browse, since `SyncedPicking` has no partner id to key
+      a proper link/unlink feature on (see DECISIONS.md)
 
 ## Frontend
 
@@ -217,7 +236,36 @@ gets done.
       attached destinations with computed distance, add from the
       unattached pool, remove per row). Nav link added next to
       "Warehouses". Built on the existing base components, no new
-      design-system pattern introduced
+      design-system pattern introduced. **Reworked the same day** — the
+      route-set manager moved to a new dedicated Routes page (below);
+      warehouse lat/lng editing moved to the Warehouses page; added a
+      "prefill from a recent delivery address" picker sourced from
+      already-synced pickings
+- [x] Nav reorganized into a grouped dropdown ("Setup") rather than one
+      flat row of links, in anticipation of more screens being added
+      (new `NavDropdown.tsx` — trigger button + panel, closes on outside
+      click/Escape/picking an item; `NavBar.tsx`'s `NAV` list is now a
+      union of flat links and `{kind: "group", items: [...]}` entries so
+      future screens can extend either shape without touching the
+      dropdown logic itself)
+- [x] Warehouses page: added an inline lat/lng column + per-row
+      "Edit coordinates" action (two number inputs + Save/Cancel, matching
+      the existing dense-table row-action style) — moved here from the
+      Destinations page, same unchanged backend endpoint
+- [x] New Routes page (`/warehouse-routes`, gated `can_manage_warehouses`,
+      grouped under the "Setup" nav dropdown): pick a warehouse first,
+      then a Leaflet + OpenStreetMap view (new `RouteMap.tsx`) shows every
+      route for that warehouse at once, each in its own color, straight
+      lines only (not real road routing); a route list with
+      Create/Rename-recolor/Delete; a per-route editor with an ordered
+      stop table (up/down-button reorder, per-row Remove, distance shown
+      per stop) and a multi-select checkbox picker over the destination
+      library with a bulk "Add N selected" action. First use of a mapping
+      library in this project — `leaflet` + `react-leaflet@^4` (not the
+      current v5, which requires React 19; this project is on React 18) +
+      `@types/leaflet`. Markers use `L.divIcon` (inline HTML/CSS), not
+      Leaflet's default image-based icons, to avoid the well-known
+      bundler asset-path issue and to make per-route coloring trivial
 
 ## Infra
 
@@ -276,19 +324,30 @@ gets done.
 
 ## Next up
 
-- [ ] **Map visualization for route arrangement** — the user asked for this
-      explicitly ("Mark plan that I want the map visualization when
-      arrange the route") alongside the destination-location library work
-      above, but asked for it to be deferred ("do this first" referred to
-      the destination-location library only). When picked up: a map view
-      shown while arranging/planning a run, rendering each route as a
-      distinct color, with each route associated to a specific warehouse
-      (per the reference image the user shared — six differently-colored
-      routes fanning out from depot points across a metro area). The
-      destination-location library + per-warehouse route sets + warehouse
-      lat/lng built in this batch are the data this map would render —
-      no map rendering (e.g. Leaflet/Mapbox) has been added to the
-      frontend yet, so this also needs a mapping-library choice
+- [x] Map visualization for route arrangement — the user asked for this
+      explicitly, then confirmed and refined the requirements after
+      reviewing the shipped destination-location library: ordered stops
+      (not just an unordered colored group), Leaflet + OpenStreetMap (no
+      paid API), straight lines only (not real road routing). Delivered as
+      the `warehouse_routes`/`route_stops` model + `RouteMap.tsx` +
+      `WarehouseRoutesPage.tsx` batch — see the "Replaced the flat
+      warehouse route set..." entries above and DECISIONS.md
+- [ ] Drag-and-drop reorder for a route's stops on the new Routes page —
+      currently up/down buttons only. `@dnd-kit/core` is already a
+      dependency (used by the Load Planning board) but `@dnd-kit/sortable`
+      (the piece that actually gives list-reordering) is not installed;
+      within-vehicle drag reorder on the Load Planning board was also
+      deferred for the same reason, so this is consistent with that
+      existing gap, not a new one
+- [ ] True partner-id-based Odoo address linking for destinations —
+      today's picking-address prefill only copies text once at creation
+      time, with no live link/unlink the way Vehicles/Drivers have to
+      `fleet.vehicle`/`hr.employee`. `SyncedPicking` has no stored Odoo
+      `res.partner` id to key that on; the raw id is fetched and used
+      transiently inside `runner.py` to join addresses, then discarded.
+      Adding it is confirmed low-effort (new `partner_id` column on
+      `SyncedPicking`/`Order`, threaded through `runner.py`) but out of
+      scope for this batch
 - [ ] `app/services/planning/runner.py::fetch_vehicles` still pulls
       `fleet.vehicle` directly from Odoo on every planning run — it does
       not use the local `vehicles` table at all. Discovered while building

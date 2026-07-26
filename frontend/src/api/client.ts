@@ -1,5 +1,6 @@
 import type {
   AdminPasswordResetInput,
+  BulkAddRouteStopsResult,
   DestinationLocation,
   DestinationLocationInput,
   DestinationLocationUpdateInput,
@@ -15,6 +16,7 @@ import type {
   OdooFleetVehicleList,
   OperationType,
   OperationTypeRefreshPreview,
+  PickingAddressOption,
   PlanningRunResult,
   SelfPasswordChangeInput,
   TokenResponse,
@@ -23,8 +25,10 @@ import type {
   UserUpdateInput,
   Warehouse,
   WarehouseCoordinatesInput,
-  WarehouseDestinationLocation,
   WarehouseRefreshPreview,
+  WarehouseRoute,
+  WarehouseRouteInput,
+  WarehouseRouteStop,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -276,42 +280,94 @@ export function setWarehouseCoordinates(
   });
 }
 
-export function listWarehouseDestinationLocations(
+export function listWarehouseRoutes(
   tenantId: string,
   warehouseId: string,
-): Promise<WarehouseDestinationLocation[]> {
-  return request<WarehouseDestinationLocation[]>(
-    `/tenants/${tenantId}/warehouses/${warehouseId}/destination-locations`,
+): Promise<WarehouseRoute[]> {
+  return request<WarehouseRoute[]>(`/tenants/${tenantId}/warehouses/${warehouseId}/routes`);
+}
+
+export function createWarehouseRoute(
+  tenantId: string,
+  warehouseId: string,
+  payload: WarehouseRouteInput,
+): Promise<WarehouseRoute> {
+  return request<WarehouseRoute>(`/tenants/${tenantId}/warehouses/${warehouseId}/routes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateWarehouseRoute(
+  tenantId: string,
+  warehouseId: string,
+  routeId: string,
+  payload: Partial<WarehouseRouteInput>,
+): Promise<WarehouseRoute> {
+  return request<WarehouseRoute>(
+    `/tenants/${tenantId}/warehouses/${warehouseId}/routes/${routeId}`,
+    { method: "PUT", body: JSON.stringify(payload) },
   );
 }
 
-export function addWarehouseDestinationLocation(
+export function deleteWarehouseRoute(
   tenantId: string,
   warehouseId: string,
-  destinationLocationId: string,
-): Promise<WarehouseDestinationLocation> {
-  return request<WarehouseDestinationLocation>(
-    `/tenants/${tenantId}/warehouses/${warehouseId}/destination-locations`,
+  routeId: string,
+): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/warehouses/${warehouseId}/routes/${routeId}`, {
+    method: "DELETE",
+  });
+}
+
+export function bulkAddRouteStops(
+  tenantId: string,
+  warehouseId: string,
+  routeId: string,
+  destinationLocationIds: string[],
+): Promise<BulkAddRouteStopsResult> {
+  return request<BulkAddRouteStopsResult>(
+    `/tenants/${tenantId}/warehouses/${warehouseId}/routes/${routeId}/stops`,
     {
       method: "POST",
-      body: JSON.stringify({ destination_location_id: destinationLocationId }),
+      body: JSON.stringify({ destination_location_ids: destinationLocationIds }),
     },
   );
 }
 
-export function removeWarehouseDestinationLocation(
+export function reorderRouteStops(
   tenantId: string,
   warehouseId: string,
+  routeId: string,
+  destinationLocationIds: string[],
+): Promise<WarehouseRouteStop[]> {
+  return request<WarehouseRouteStop[]>(
+    `/tenants/${tenantId}/warehouses/${warehouseId}/routes/${routeId}/stops/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ destination_location_ids: destinationLocationIds }),
+    },
+  );
+}
+
+export function removeRouteStop(
+  tenantId: string,
+  warehouseId: string,
+  routeId: string,
   destinationLocationId: string,
 ): Promise<void> {
   return request<void>(
-    `/tenants/${tenantId}/warehouses/${warehouseId}/destination-locations/${destinationLocationId}`,
+    `/tenants/${tenantId}/warehouses/${warehouseId}/routes/${routeId}/stops/${destinationLocationId}`,
     { method: "DELETE" },
   );
 }
 
 export function listDestinationLocations(tenantId: string): Promise<DestinationLocation[]> {
   return request<DestinationLocation[]>(`/tenants/${tenantId}/destination-locations`);
+}
+
+export function listPickingAddressOptions(tenantId: string): Promise<PickingAddressOption[]> {
+  return request<PickingAddressOption[]>(`/tenants/${tenantId}/destination-locations/picking-addresses`);
 }
 
 export function createDestinationLocation(

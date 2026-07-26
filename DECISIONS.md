@@ -537,3 +537,98 @@ arranging routes — each route in a distinct color, associated with a
 specific warehouse. Logged as a future item in TODO.md rather than built
 now; this batch is the data layer (destinations, route sets, distances)
 the map would eventually render.
+
+---
+
+## 2026-07-26 — Replaced the flat warehouse route set with ordered, colored Routes + a map
+
+**Decision:** The flat, unordered `WarehouseDestinationLocation` join from
+the batch above (same day) was replaced with two new tables: named,
+colored `WarehouseRoute` rows per warehouse, each an ordered sequence of
+`RouteStop`s. A new Leaflet + OpenStreetMap view (`RouteMap.tsx`) renders
+every route for a warehouse at once, each in its own color, with straight
+lines (not real road routing) connecting the warehouse through its stops
+in order. Warehouse lat/lng editing moved from the Destinations page to
+the Warehouses page. A new destination-creation prefill sources
+name/address text from the tenant's already-synced `SyncedPicking` rows.
+
+**Why replace instead of extend:** the user reviewed the shipped flat
+route-set UI and asked for something structurally different — an actual
+"route" concept with order and color, matching the six-color reference
+image from the original map-visualization ask, not an unordered pool of
+associated destinations. Confirmed via `AskUserQuestion`: stops are
+ordered (not just an unordered colored group), matching the "arrange the
+route" language and the existing FILO/`RouteStop` precedent from planning
+results.
+
+**Hard-dropped `warehouse_destination_locations` rather than migrating
+data:** confirmed empty live (via curl) at the point this decision was
+made, and the shipped UI showed "No destinations yet" — no real user data
+existed to preserve. This is the first migration in this project to hard
+`DROP TABLE` a table that's actually been live (every prior `drop_table`
+call lives in a `downgrade()`, reverting its own just-applied migration),
+so the migration (`0009_warehouse_routes`) adds a defensive row-count
+check before dropping and raises instead of silently discarding data if
+that assumption turns out wrong by the time it actually runs.
+
+**Route color palette + not-already-used-then-cycle assignment:** this
+project previously had only a single `accent` color plus a 3-color status
+scale — no categorical "N distinct things" palette existed. Added a fixed
+8-color palette (`app.services.warehouse_routes.ROUTE_COLOR_PALETTE`).
+Auto-assignment picks the first palette color not currently used by
+another route *at the same warehouse*, falling back to cycling by count
+only once every palette color is in use — a plain `existing_count %
+len(palette)` scheme would hand out an already-in-use color after a
+delete-then-create (3 routes get colors 0/1/2, delete the one with color
+1, create a new one: count-based indexing would collide with the
+surviving color-2 route).
+
+**Bulk-add stops silently skips duplicates instead of 400ing:** a
+different UX contract than the old single-add endpoint (which 400'd on a
+duplicate) — that endpoint was one explicit action on one destination,
+where an unexpected 400 is informative; bulk-add is "I selected N
+destinations, give me the ones that aren't already in this route,"
+where erroring the whole batch over one already-present pick would be
+worse UX, not a matching one. The response still reports which ids were
+skipped rather than silently discarding that information.
+
+**Straight-line map polylines, not real road routing:** consistent with
+this project's standing decision to avoid a paid routing/matrix API
+(Haversine distance was chosen for the same reason). The map shows
+as-the-crow-flies lines between stops in the route's stored order, not
+turn-by-turn directions.
+
+**Leaflet + OpenStreetMap over Mapbox:** no API key or billing account
+required, matching the "no paid routing/matrix API" posture. `L.divIcon`
+(inline HTML/CSS circle markers) is used instead of Leaflet's default
+image-based `L.Icon` — sidesteps the well-known bundler/Vite asset-path
+breakage with Leaflet's default marker images, and makes per-route
+coloring trivial without a colored PNG per palette color.
+`react-leaflet@^4` (not the current v5) was installed deliberately — v5
+requires React 19, and this project is on React 18.
+
+**Picking-address prefill, not a live Odoo partner browse:** the user
+asked for destinations to link to/pull from an Odoo delivery address;
+confirmed this means reusing the address `stock.picking` sync already
+resolves (`SyncedPicking`'s text address fields), not a new XML-RPC
+browse endpoint like Vehicles/Drivers have for `fleet.vehicle`/
+`hr.employee`. `SyncedPicking` has no stored Odoo `res.partner` id (the
+raw id is used transiently inside `runner.py` to join addresses, then
+discarded before reaching `Order`/`SyncedPicking`) — so there's no id to
+key a proper live link/unlink feature on today. The new endpoint
+(`GET .../destination-locations/picking-addresses`) is a lower-fidelity
+"prefill text once" feature: it dedupes already-synced pickings by
+normalized (lowercased, trimmed) address text, not by any stable
+identifier, since Odoo's free-text address fields aren't normalized at
+sync time. Deduping happens in Python, not a dialect-specific SQL
+`DISTINCT ON`, since this query needs to run against both Postgres and
+the SQLite test fixture. A real partner-id-based link feature would need
+a new `partner_id` column on `SyncedPicking`/`Order`, threaded through
+`runner.py` (confirmed low-effort — the id is already fetched and
+discarded) — logged as a future item in TODO.md, out of scope here.
+
+**Warehouse coordinate editing moved to the Warehouses page:** it's a
+warehouse property; editing it from the Destinations page (as the prior
+batch shipped it) was the wrong screen. The backend endpoint
+(`PUT .../warehouses/{id}/coordinates`) is unchanged — only the frontend
+form's location moved.

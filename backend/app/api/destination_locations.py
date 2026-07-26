@@ -4,11 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_db, require_permission
-from app.models.destination_location import DestinationLocation, WarehouseDestinationLocation
+from app.models.destination_location import DestinationLocation
+from app.models.synced_picking import SyncedPicking
+from app.models.warehouse_route import RouteStop
 from app.schemas.destination_location import (
     DestinationLocationCreate,
     DestinationLocationRead,
     DestinationLocationUpdate,
+    PickingAddressOption,
 )
 
 router = APIRouter(
@@ -42,8 +45,76 @@ def list_destination_locations(
 ) -> list[DestinationLocation]:
     _require_same_tenant(tenant_id, current_user)
     return (
-        db.query(DestinationLocation).filter_by(tenant_id=tenant_id).order_by(DestinationLocation.name).all()
+        db.query(DestinationLocation)
+        .filter_by(tenant_id=tenant_id)
+        .order_by(DestinationLocation.name)
+        .all()
     )
+
+
+@router.get("/picking-addresses", response_model=list[PickingAddressOption])
+def list_picking_address_options(
+    tenant_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
+) -> list[dict]:
+    """Distinct customer/address combos pulled from the tenant's
+    already-synced SyncedPicking rows, to prefill a new destination's
+    name/address fields — reuses the delivery address stock.picking sync
+    already resolves, rather than a new live Odoo partner-browse call
+    (SyncedPicking has no partner id to key a proper link/unlink feature
+    on the way Vehicles/Drivers link to Odoo — see DECISIONS.md).
+
+    Deduped in Python, not SQL: Odoo's free-text address fields aren't
+    normalized at sync time (case/whitespace can drift between pickings
+    for the same customer), and this needs to run against both Postgres
+    and the SQLite test fixture, so a portable normalize-then-dedupe pass
+    is simpler than a dialect-specific DISTINCT ON. Ordered by
+    `last_seen_at` desc first so which row represents a given combo is
+    deterministic, not query-plan-dependent."""
+    _require_same_tenant(tenant_id, current_user)
+
+    pickings = (
+        db.query(SyncedPicking)
+        .filter_by(tenant_id=tenant_id)
+        .order_by(SyncedPicking.last_seen_at.desc())
+        .all()
+    )
+
+    seen: set[tuple[str, ...]] = set()
+    options: list[SyncedPicking] = []
+    for picking in pickings:
+        key = tuple(
+            value.strip().lower()
+            for value in (
+                picking.customer_name,
+                picking.street,
+                picking.street2,
+                picking.city,
+                picking.state_name,
+                picking.country_name,
+                picking.zip,
+            )
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        options.append(picking)
+        if len(options) >= 500:
+            break
+
+    return [
+        {
+            "customer_name": p.customer_name,
+            "street": p.street,
+            "street2": p.street2,
+            "city": p.city,
+            "state_name": p.state_name,
+            "country_name": p.country_name,
+            "zip": p.zip,
+        }
+        for p in options
+    ]
 
 
 @router.post("", response_model=DestinationLocationRead, status_code=status.HTTP_201_CREATED)
@@ -85,16 +156,16 @@ def delete_destination_location(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> None:
-    """Deleting a destination removes it from every warehouse's route set
-    it was attached to — there's nothing meaningful left for those join
-    rows to point at, so this cleans them up rather than blocking (unlike
-    e.g. a warehouse referenced by a vehicle, deleting a shared reference
+    """Deleting a destination removes it from every route (any warehouse)
+    it was a stop on — there's nothing meaningful left for those stop rows
+    to point at, so this cleans them up rather than blocking (unlike e.g.
+    a warehouse referenced by a vehicle, deleting a shared reference
     location isn't a "someone still depends on this exact record for
     correctness" situation)."""
     _require_same_tenant(tenant_id, current_user)
     location = _get_destination_or_404(db, tenant_id, destination_location_id)
 
-    db.query(WarehouseDestinationLocation).filter_by(
+    db.query(RouteStop).filter_by(
         tenant_id=tenant_id, destination_location_id=location.id
     ).delete()
     db.delete(location)

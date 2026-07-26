@@ -10,18 +10,11 @@ from app.api.destination_locations import (
     create_destination_location,
     delete_destination_location,
     list_destination_locations,
+    list_picking_address_options,
     update_destination_location,
 )
-from app.api.warehouses import (
-    add_warehouse_destination_location,
-    list_warehouse_destination_locations,
-)
-from app.schemas.destination_location import (
-    DestinationLocationCreate,
-    DestinationLocationUpdate,
-    WarehouseDestinationLocationCreate,
-)
-from app.services.sync_config import upsert_warehouses
+from app.models.synced_picking import SyncedPicking
+from app.schemas.destination_location import DestinationLocationCreate, DestinationLocationUpdate
 
 TENANT_ID = uuid.uuid4()
 USER = CurrentUser(user_id=uuid.uuid4(), tenant_id=TENANT_ID)
@@ -33,28 +26,6 @@ def _new_destination(session, **overrides):
     return create_destination_location(
         TENANT_ID, DestinationLocationCreate(**defaults), session, USER
     )
-
-
-def _new_warehouse(session, odoo_id=1, name="Main WH"):
-    return upsert_warehouses(
-        session,
-        TENANT_ID,
-        [
-            {
-                "odoo_warehouse_id": odoo_id,
-                "name": name,
-                "code": "WH",
-                "street": "",
-                "street2": "",
-                "city": "",
-                "state_id": None,
-                "state_name": "",
-                "country_id": None,
-                "country_name": "",
-                "zip": "",
-            }
-        ],
-    )[0]
 
 
 def test_create_and_list_destination_location(sync_db_session):
@@ -86,21 +57,44 @@ def test_delete_destination_location(sync_db_session):
     assert list_destination_locations(TENANT_ID, sync_db_session, USER) == []
 
 
-def test_deleting_destination_location_removes_it_from_every_warehouse_route_set(sync_db_session):
-    destination = _new_destination(sync_db_session)
-    warehouse = _new_warehouse(sync_db_session)
-    add_warehouse_destination_location(
-        TENANT_ID,
-        warehouse.id,
-        WarehouseDestinationLocationCreate(destination_location_id=destination.id),
-        sync_db_session,
-        USER,
-    )
+def _new_picking(session, **overrides):
+    defaults = {
+        "tenant_id": TENANT_ID,
+        "odoo_picking_id": overrides.pop("odoo_picking_id", 1),
+        "customer_name": "Acme Corp",
+        "street": "1 Main St",
+        "street2": "",
+        "city": "Toronto",
+        "state_name": "Ontario",
+        "country_name": "Canada",
+        "zip": "M1M 1M1",
+    }
+    defaults.update(overrides)
+    picking = SyncedPicking(**defaults)
+    session.add(picking)
+    session.commit()
+    return picking
 
-    delete_destination_location(TENANT_ID, destination.id, sync_db_session, USER)
 
-    remaining = list_warehouse_destination_locations(TENANT_ID, warehouse.id, sync_db_session, USER)
-    assert remaining == []
+def test_picking_addresses_dedupes_same_customer_and_address(sync_db_session):
+    _new_picking(sync_db_session, odoo_picking_id=1)
+    _new_picking(sync_db_session, odoo_picking_id=2)  # same customer/address
+    _new_picking(sync_db_session, odoo_picking_id=3, customer_name="Different Co", city="Ottawa")
+
+    options = list_picking_address_options(TENANT_ID, sync_db_session, USER)
+
+    assert len(options) == 2
+    names = {o["customer_name"] for o in options}
+    assert names == {"Acme Corp", "Different Co"}
+
+
+def test_picking_addresses_dedupe_ignores_case_and_whitespace(sync_db_session):
+    _new_picking(sync_db_session, odoo_picking_id=1, customer_name="Acme Corp", city="Toronto")
+    _new_picking(sync_db_session, odoo_picking_id=2, customer_name="  ACME CORP  ", city="TORONTO")
+
+    options = list_picking_address_options(TENANT_ID, sync_db_session, USER)
+
+    assert len(options) == 1
 
 
 def test_destination_location_endpoints_reject_mismatched_tenant(sync_db_session):

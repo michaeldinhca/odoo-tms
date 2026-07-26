@@ -11,6 +11,7 @@ from app.api import (
     tenants,
     users,
     vehicles,
+    warehouse_routes,
     warehouses,
 )
 from app.core.config import settings
@@ -31,6 +32,7 @@ app.include_router(users.router)
 app.include_router(credentials.router)
 app.include_router(operation_types.router)
 app.include_router(warehouses.router)
+app.include_router(warehouse_routes.router)
 app.include_router(destination_locations.router)
 app.include_router(vehicles.router)
 app.include_router(drivers.router)

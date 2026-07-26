@@ -248,6 +248,55 @@ needed to resolve a bigger array in more cases.
   every call site to remember to clear it, and there's no case where
   leaving a stale selection after a move would be desirable.
 
+## Warehouse routes & map (2026-07-26)
+
+- **Route color palette** — the first categorical (N-distinct-things)
+  palette in this project; everything above is either the single `accent`
+  or the 3-stop status scale, neither of which fits "give each of a
+  warehouse's routes its own color." Fixed 8-color list in
+  `backend/app/services/warehouse_routes.py`:
+
+  | Color | Hex |
+  |---|---|
+  | blue | `#2563EB` |
+  | red | `#DC2626` |
+  | green | `#059669` |
+  | amber | `#D97706` |
+  | violet | `#7C3AED` |
+  | pink | `#DB2777` |
+  | cyan | `#0891B2` |
+  | lime | `#65A30D` |
+
+  Picked for visual distinctness on a light OpenStreetMap basemap, not
+  individually WCAG-contrast-verified against arbitrary map tile
+  imagery — a known gap, same caveat class as the "no interactive browser
+  verification" note below. A route's color is auto-assigned server-side
+  (first palette color not already used by another route at the same
+  warehouse) unless the admin overrides it via a native
+  `<input type="color">` on the Routes page — no custom color-picker
+  component was built.
+
+- **`RouteMap.tsx`** (`frontend/src/components/RouteMap.tsx`) — first use
+  of a mapping library in this project: `leaflet` + `react-leaflet@^4` +
+  `@types/leaflet`. Pinned to react-leaflet's v4 line deliberately — the
+  current major (v5) requires React 19, and this project is on React 18.
+  Renders every route for one warehouse at once (a warehouse-select
+  happens first, on the page, not in the map component), each stop as a
+  numbered, colored marker connected by a straight `Polyline` from the
+  warehouse through its stops in order — explicitly not real road
+  routing, consistent with this project's Haversine-only, no-paid-API
+  stance (see DECISIONS.md). Markers use `L.divIcon` (small inline
+  HTML/CSS shapes) instead of Leaflet's default image-based `L.Icon` —
+  sidesteps a well-known bundler/Vite asset-path breakage with Leaflet's
+  default marker images, and makes per-route coloring trivial without a
+  colored PNG per palette color. OpenStreetMap's tile usage policy
+  requires attribution, included on the `TileLayer`.
+  `MapContainer`'s `center`/`zoom` props are read only on initial mount in
+  react-leaflet v4 (changing them doesn't recenter an existing map
+  instance) — the Routes page passes `key={warehouse.id}` to force a
+  remount when the selected warehouse changes, rather than reaching for
+  `useMap()`/imperative `setView()`.
+
 ## Decisions log
 
 ### 2026-07-25 — Adopt Tailwind CSS v4, no component library; cool-neutral/blue-accent direction

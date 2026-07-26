@@ -57,18 +57,19 @@ class WarehouseCoordinatesUpdate(BaseModel):
     lng: float | None
 
 
-class WarehouseDestinationLocationCreate(BaseModel):
-    destination_location_id: uuid.UUID
+class PickingAddressOption(BaseModel):
+    """One distinct customer/address combo pulled from the tenant's
+    already-synced `SyncedPicking` rows — used to prefill a new
+    destination's name/address fields (see
+    GET .../destination-locations/picking-addresses). Raw field values
+    from the picked row; lat/lng is never included since pickings don't
+    have coordinates either — those always stay manual on the destination
+    form."""
 
-
-class WarehouseDestinationLocationRead(BaseModel):
-    """The association row plus the destination it points to and the
-    distance from the warehouse being queried — assembled by
-    app.services.destination_locations, not a direct `from_attributes`
-    read off the join table (distance is computed, not stored; see
-    WarehouseDestinationLocation's docstring for why)."""
-
-    id: uuid.UUID
-    destination: DestinationLocationRead
-    distance_km: float | None
-    created_at: datetime
+    customer_name: str
+    street: str
+    street2: str
+    city: str
+    state_name: str
+    country_name: str
+    zip: str

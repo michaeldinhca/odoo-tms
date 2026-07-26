@@ -7,10 +7,11 @@ import {
   previewWarehousesRefresh,
   refreshWarehouses,
   setWarehouseActive,
+  setWarehouseCoordinates,
   setWarehouseSync,
 } from "../api/client";
 import type { Warehouse, WarehouseRefreshPreview } from "../api/types";
-import { Button, Card, Table, TableBody, TableHead, TableRow, Td, Th } from "../components/ui";
+import { Button, Card, Input, Table, TableBody, TableHead, TableRow, Td, Th } from "../components/ui";
 import { useOdooInstance } from "../context/OdooInstanceContext";
 
 function formatWarehouseAddress(w: Warehouse): string {
@@ -33,6 +34,9 @@ export default function WarehousesPage() {
   const [preview, setPreview] = useState<WarehouseRefreshPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+
+  const [editingCoordsId, setEditingCoordsId] = useState<string | null>(null);
+  const [coordsForm, setCoordsForm] = useState({ lat: "", lng: "" });
 
   function load() {
     if (!tenantId) return;
@@ -120,6 +124,28 @@ export default function WarehousesPage() {
     }
   }
 
+  function handleStartEditCoords(warehouse: Warehouse) {
+    setEditingCoordsId(warehouse.id);
+    setCoordsForm({
+      lat: warehouse.lat != null ? String(warehouse.lat) : "",
+      lng: warehouse.lng != null ? String(warehouse.lng) : "",
+    });
+  }
+
+  async function handleSaveCoords(warehouse: Warehouse) {
+    setError(null);
+    try {
+      const updated = await setWarehouseCoordinates(tenantId!, warehouse.id, {
+        lat: coordsForm.lat ? Number(coordsForm.lat) : null,
+        lng: coordsForm.lng ? Number(coordsForm.lng) : null,
+      });
+      setWarehouses((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+      setEditingCoordsId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save coordinates");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl p-6">
       <h1 className="mb-2 text-2xl font-semibold text-text">Warehouses</h1>
@@ -180,6 +206,7 @@ export default function WarehousesPage() {
               <Th>Name</Th>
               <Th>Code</Th>
               <Th>Address</Th>
+              <Th>Coordinates</Th>
               <Th>Last seen</Th>
               <Th>Actions</Th>
             </TableRow>
@@ -199,6 +226,42 @@ export default function WarehousesPage() {
                 <Td>{w.name}</Td>
                 <Td>{w.code}</Td>
                 <Td>{formatWarehouseAddress(w)}</Td>
+                <Td>
+                  {editingCoordsId === w.id ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="lat"
+                        value={coordsForm.lat}
+                        onChange={(e) => setCoordsForm({ ...coordsForm, lat: e.target.value })}
+                        className="w-24 px-2 py-1"
+                      />
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="lng"
+                        value={coordsForm.lng}
+                        onChange={(e) => setCoordsForm({ ...coordsForm, lng: e.target.value })}
+                        className="w-24 px-2 py-1"
+                      />
+                      <Button size="sm" onClick={() => handleSaveCoords(w)}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setEditingCoordsId(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditCoords(w)}
+                      className="rounded-sm text-left text-text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      {w.lat != null && w.lng != null ? `${w.lat}, ${w.lng}` : "Set coordinates"}
+                    </button>
+                  )}
+                </Td>
                 <Td className="text-text-muted">{w.last_seen_at ?? "—"}</Td>
                 <Td>
                   <div className="flex gap-2">

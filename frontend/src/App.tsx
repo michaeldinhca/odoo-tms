@@ -14,6 +14,7 @@ import OperationTypesPage from "./pages/OperationTypesPage";
 import PlanningPage from "./pages/PlanningPage";
 import UsersPage from "./pages/UsersPage";
 import VehiclesPage from "./pages/VehiclesPage";
+import WarehouseRoutesPage from "./pages/WarehouseRoutesPage";
 import WarehousesPage from "./pages/WarehousesPage";
 
 export default function App() {
@@ -59,6 +60,16 @@ export default function App() {
               <RequireAuth>
                 <RequirePermission permission="can_manage_warehouses">
                   <DestinationLocationsPage />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/warehouse-routes"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="can_manage_warehouses">
+                  <WarehouseRoutesPage />
                 </RequirePermission>
               </RequireAuth>
             }

@@ -155,7 +155,7 @@ Unique on `(tenant_id, odoo_warehouse_id)`.
 A reusable, admin-managed delivery destination — not tied to any one Odoo
 `stock.picking` (contrast with the Load Planning board's ephemeral
 `Picking` fixture data). One destination can be attached to several
-warehouses' route sets at once (`warehouse_destination_locations` below).
+warehouses' routes at once (`warehouse_routes`/`route_stops` below).
 
 | column      | type              | notes                                        |
 |-------------|-------------------|-----------------------------------------------|
@@ -173,27 +173,45 @@ warehouses' route sets at once (`warehouse_destination_locations` below).
 | created_at  | timestamptz       |                                                 |
 | updated_at  | timestamptz       |                                                 |
 
-Deleting a destination cascades: it's removed from every warehouse's route
-set it was attached to (the join row is deleted, not blocked) — see
+Deleting a destination cascades: it's removed from every route (any
+warehouse) it was a stop on (the stop row is deleted, not blocked) — see
 DECISIONS.md.
 
-### `warehouse_destination_locations`
+### `warehouse_routes`
 
-Many-to-many join: which destinations are in a given warehouse's route set.
+A named, colored delivery route belonging to one warehouse — an ordered
+sequence of `route_stops`. Replaced the earlier flat, unordered
+`warehouse_destination_locations` join (see DECISIONS.md).
+
+| column      | type              | notes                                        |
+|-------------|-------------------|-----------------------------------------------|
+| id          | UUID (PK)         |                                                 |
+| tenant_id   | UUID (FK)         | references `tenants.id`                        |
+| warehouse_id | UUID (FK)        | references `synced_warehouses.id`              |
+| name        | text              | required                                       |
+| color       | text (7)          | hex string, e.g. `#2563EB`; auto-assigned from a fixed palette unless the admin picks one — see `app.services.warehouse_routes` |
+| created_at  | timestamptz       |                                                 |
+| updated_at  | timestamptz       |                                                 |
+
+### `route_stops`
+
+One destination's position within a `warehouse_routes` row.
 
 | column                    | type              | notes                                |
 |----------------------------|-------------------|-----------------------------------------|
 | id                         | UUID (PK)         |                                           |
 | tenant_id                  | UUID (FK)         | references `tenants.id`                  |
-| warehouse_id               | UUID (FK)         | references `synced_warehouses.id`        |
+| route_id                   | UUID (FK)         | references `warehouse_routes.id`         |
 | destination_location_id    | UUID (FK)         | references `destination_locations.id`    |
+| stop_order                 | integer           | densified to `0..N-1` on explicit reorder; a single-stop delete leaves gaps rather than renumbering (harmless — order is relative, not density-dependent) |
 | created_at                 | timestamptz       |                                           |
 
-Unique on `(warehouse_id, destination_location_id)` — the same destination
-may still appear under any number of *other* warehouses. Distance is **not**
-stored here; it's computed at read time from both sides' current lat/lng
+Unique on `(route_id, destination_location_id)` — a destination can't
+repeat within one route, but may still appear in any number of *other*
+routes/warehouses. Distance is **not** stored here; it's computed at read
+time from both sides' current lat/lng
 (`app.services.destination_locations.distance_km`, haversine) since either
-coordinate can be edited after the association is created.
+coordinate can be edited after the stop is created.
 
 ### `synced_pickings`
 
@@ -404,13 +422,18 @@ address context needed to actually dispatch it, not just the picking ID.
 | PUT    | `/tenants/{id}/warehouses/{row_id}/archive` | toggle `active` (archive/unarchive)          | implemented |
 | DELETE | `/tenants/{id}/warehouses/{row_id}`  | delete; blocked (400) if a vehicle's `home_warehouse_id` or a `synced_pickings` row references it — archive instead | implemented |
 | PUT    | `/tenants/{id}/warehouses/{row_id}/coordinates` | set/clear admin-entered `lat`/`lng` (both nullable, to allow explicit clearing) | implemented |
-| GET    | `/tenants/{id}/warehouses/{row_id}/destination-locations` | this warehouse's route set — each destination plus distance from the warehouse (`null` if the warehouse has no coordinates yet) | implemented |
-| POST   | `/tenants/{id}/warehouses/{row_id}/destination-locations` | add a destination to this warehouse's route set; 404 if the destination doesn't exist, 400 if already in this warehouse's set (the same destination may still be added to other warehouses) | implemented |
-| DELETE | `/tenants/{id}/warehouses/{row_id}/destination-locations/{destination_id}` | remove from this warehouse's route set only — the destination itself, and its presence in any other warehouse's set, is untouched | implemented |
+| GET    | `/tenants/{id}/warehouses/{row_id}/routes` | list this warehouse's routes, each with its ordered `stops` (destination + `stop_order` + distance from the warehouse, `null` if the warehouse has no coordinates yet) | implemented |
+| POST   | `/tenants/{id}/warehouses/{row_id}/routes` | create a route (`name`, optional `color` — auto-assigned from a fixed palette if omitted, avoiding a color already in use at that warehouse) | implemented |
+| PUT    | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}` | partial update (name/color) | implemented |
+| DELETE | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}` | delete a route and its stops | implemented |
+| POST   | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}/stops` | bulk-add destinations to the route; silently skips ones already present (reported back in the response, not discarded) rather than 400ing the whole batch | implemented |
+| PUT    | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}/stops/reorder` | reorder — body must be exactly the route's current stop set (400 if not); reassigns `stop_order` `0..N-1` | implemented |
+| DELETE | `/tenants/{id}/warehouses/{row_id}/routes/{route_id}/stops/{destination_id}` | remove one stop from the route | implemented |
 | GET    | `/tenants/{id}/destination-locations` | list the tenant's destination library                       | implemented |
+| GET    | `/tenants/{id}/destination-locations/picking-addresses` | distinct customer/address combos pulled from the tenant's already-synced `synced_pickings`, for prefilling a new destination's name/address fields (no live Odoo call) | implemented |
 | POST   | `/tenants/{id}/destination-locations` | create a destination                                          | implemented |
 | PUT    | `/tenants/{id}/destination-locations/{row_id}` | partial update (only provided fields applied)          | implemented |
-| DELETE | `/tenants/{id}/destination-locations/{row_id}` | delete; cascades — removes it from every warehouse's route set it was in, rather than blocking (see DECISIONS.md) | implemented |
+| DELETE | `/tenants/{id}/destination-locations/{row_id}` | delete; cascades — removes it from every route (any warehouse) it was a stop on, rather than blocking (see DECISIONS.md) | implemented |
 | GET    | `/tenants/{id}/vehicles`             | list vehicles (filter by `status_filter`, `home_warehouse_id`, `?include_archived=true`) | implemented |
 | POST   | `/tenants/{id}/vehicles`             | create a vehicle                                   | implemented |
 | GET    | `/tenants/{id}/vehicles/odoo-fleet-vehicles` | browse Odoo `fleet.vehicle` records (never auto-creates locally); also refreshes stale-link flags; requires `state=="active"` | implemented |

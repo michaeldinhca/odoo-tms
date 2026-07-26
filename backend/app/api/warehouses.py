@@ -6,22 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_db, require_permission
-from app.models.destination_location import DestinationLocation, WarehouseDestinationLocation
 from app.models.synced_picking import SyncedPicking
 from app.models.synced_warehouse import SyncedWarehouse
 from app.models.vehicle import Vehicle
-from app.schemas.destination_location import (
-    WarehouseCoordinatesUpdate,
-    WarehouseDestinationLocationCreate,
-    WarehouseDestinationLocationRead,
-)
+from app.models.warehouse_route import RouteStop, WarehouseRoute
+from app.schemas.destination_location import WarehouseCoordinatesUpdate
 from app.schemas.sync_config import (
     ArchiveToggle,
     WarehouseRead,
     WarehouseRefreshPreview,
     WarehouseSyncToggle,
 )
-from app.services.destination_locations import distance_km
 from app.services.odoo_client import OdooAuthError
 from app.services.odoo_connection import build_client
 from app.services.odoo_credential_gate import require_active_instance
@@ -168,9 +163,19 @@ def delete_warehouse(
             detail="Warehouse has synced pickings; archive it instead of deleting",
         )
 
-    db.query(WarehouseDestinationLocation).filter_by(
-        tenant_id=tenant_id, warehouse_id=row.id
-    ).delete()
+    route_ids = [
+        r_id
+        for (r_id,) in db.query(WarehouseRoute.id)
+        .filter_by(tenant_id=tenant_id, warehouse_id=row.id)
+        .all()
+    ]
+    if route_ids:
+        db.query(RouteStop).filter(RouteStop.route_id.in_(route_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(WarehouseRoute).filter(WarehouseRoute.id.in_(route_ids)).delete(
+            synchronize_session=False
+        )
     db.delete(row)
     db.commit()
 
@@ -184,8 +189,8 @@ def set_warehouse_coordinates(
     current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
 ) -> SyncedWarehouse:
     """Admin-entered, not synced from Odoo (see SyncedWarehouse's
-    docstring) — needed for distance-to-destination on the route-set
-    endpoints below."""
+    docstring) — needed for distance-to-destination on this warehouse's
+    routes (see app.api.warehouse_routes)."""
     _require_same_tenant(tenant_id, current_user)
     row = _get_warehouse_or_404(db, tenant_id, warehouse_id)
 
@@ -194,127 +199,3 @@ def set_warehouse_coordinates(
     db.commit()
     db.refresh(row)
     return row
-
-
-@router.get(
-    "/{warehouse_id}/destination-locations",
-    response_model=list[WarehouseDestinationLocationRead],
-)
-def list_warehouse_destination_locations(
-    tenant_id: uuid.UUID,
-    warehouse_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
-) -> list[dict]:
-    """This warehouse's route set — every destination attached to it,
-    each with the distance from this warehouse (null if the warehouse has
-    no coordinates set yet — see PUT .../coordinates)."""
-    _require_same_tenant(tenant_id, current_user)
-    warehouse = _get_warehouse_or_404(db, tenant_id, warehouse_id)
-
-    rows = (
-        db.query(WarehouseDestinationLocation, DestinationLocation)
-        .join(
-            DestinationLocation,
-            WarehouseDestinationLocation.destination_location_id == DestinationLocation.id,
-        )
-        .filter(
-            WarehouseDestinationLocation.tenant_id == tenant_id,
-            WarehouseDestinationLocation.warehouse_id == warehouse.id,
-        )
-        .order_by(DestinationLocation.name)
-        .all()
-    )
-    return [
-        {
-            "id": assoc.id,
-            "destination": destination,
-            "distance_km": distance_km(warehouse, destination),
-            "created_at": assoc.created_at,
-        }
-        for assoc, destination in rows
-    ]
-
-
-@router.post(
-    "/{warehouse_id}/destination-locations",
-    response_model=WarehouseDestinationLocationRead,
-    status_code=status.HTTP_201_CREATED,
-)
-def add_warehouse_destination_location(
-    tenant_id: uuid.UUID,
-    warehouse_id: uuid.UUID,
-    payload: WarehouseDestinationLocationCreate,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
-) -> dict:
-    """Adds a destination to this warehouse's route set. The same
-    destination can be added to any number of other warehouses too — this
-    only creates one join row, it doesn't move or copy the destination."""
-    _require_same_tenant(tenant_id, current_user)
-    warehouse = _get_warehouse_or_404(db, tenant_id, warehouse_id)
-
-    destination = (
-        db.query(DestinationLocation)
-        .filter_by(id=payload.destination_location_id, tenant_id=tenant_id)
-        .first()
-    )
-    if destination is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Destination not found")
-
-    existing = (
-        db.query(WarehouseDestinationLocation)
-        .filter_by(warehouse_id=warehouse.id, destination_location_id=destination.id)
-        .first()
-    )
-    if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This destination is already in the warehouse's route set",
-        )
-
-    association = WarehouseDestinationLocation(
-        tenant_id=tenant_id, warehouse_id=warehouse.id, destination_location_id=destination.id
-    )
-    db.add(association)
-    db.commit()
-    db.refresh(association)
-
-    return {
-        "id": association.id,
-        "destination": destination,
-        "distance_km": distance_km(warehouse, destination),
-        "created_at": association.created_at,
-    }
-
-
-@router.delete(
-    "/{warehouse_id}/destination-locations/{destination_location_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def remove_warehouse_destination_location(
-    tenant_id: uuid.UUID,
-    warehouse_id: uuid.UUID,
-    destination_location_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("can_manage_warehouses")),
-) -> None:
-    """Removes the destination from this warehouse's route set only — the
-    `DestinationLocation` itself, and its presence in any other
-    warehouse's route set, is untouched."""
-    _require_same_tenant(tenant_id, current_user)
-    warehouse = _get_warehouse_or_404(db, tenant_id, warehouse_id)
-
-    association = (
-        db.query(WarehouseDestinationLocation)
-        .filter_by(warehouse_id=warehouse.id, destination_location_id=destination_location_id)
-        .first()
-    )
-    if association is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Destination is not in this warehouse's route set",
-        )
-
-    db.delete(association)
-    db.commit()

@@ -161,14 +161,54 @@ export interface DestinationLocationInput {
 
 export type DestinationLocationUpdateInput = Partial<DestinationLocationInput>;
 
-/** A destination in a warehouse's route set, with distance computed at
- * read time from both sides' current lat/lng (null if the warehouse has
- * no coordinates set yet). */
-export interface WarehouseDestinationLocation {
+export interface PickingAddressOption {
+  customer_name: string;
+  street: string;
+  street2: string;
+  city: string;
+  state_name: string;
+  country_name: string;
+  zip: string;
+}
+
+/** One destination's position within a WarehouseRoute — named distinctly
+ * from the existing `RouteStop` above (that one is a planning-run FILO
+ * result stop, an unrelated concept that happens to share the word
+ * "route"). Distance is computed at read time from both sides' current
+ * lat/lng (null if the warehouse has no coordinates set yet). */
+export interface WarehouseRouteStop {
   id: string;
   destination: DestinationLocation;
+  stop_order: number;
   distance_km: number | null;
   created_at: string;
+}
+
+/** A named, colored delivery route belonging to one warehouse — an
+ * ordered sequence of WarehouseRouteStops. Replaces the earlier flat,
+ * unordered "warehouse route set" concept. */
+export interface WarehouseRoute {
+  id: string;
+  tenant_id: string;
+  warehouse_id: string;
+  name: string;
+  color: string;
+  stops: WarehouseRouteStop[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WarehouseRouteInput {
+  name: string;
+  color?: string | null;
+}
+
+/** `skipped_destination_ids` are ones already in the route — bulk-add
+ * silently skips duplicates rather than failing the whole batch, but
+ * still reports what was skipped. */
+export interface BulkAddRouteStopsResult {
+  stops: WarehouseRouteStop[];
+  skipped_destination_ids: string[];
 }
 
 export interface OperationTypeDiffItem {
