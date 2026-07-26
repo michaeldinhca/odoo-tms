@@ -116,9 +116,59 @@ export interface Warehouse {
   zip: string;
   is_synced: boolean;
   active: boolean;
+  /** Admin-entered, not synced from Odoo — see SPEC.md. Null until set via
+   * setWarehouseCoordinates; needed for the distance shown on that
+   * warehouse's destination route set. */
+  lat: number | null;
+  lng: number | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface WarehouseCoordinatesInput {
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface DestinationLocation {
+  id: string;
+  tenant_id: string;
+  name: string;
+  street: string;
+  street2: string;
+  city: string;
+  state: string;
+  country: string;
+  zip: string;
+  lat: number;
+  lng: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DestinationLocationInput {
+  name: string;
+  street?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  zip?: string;
+  lat: number;
+  lng: number;
+}
+
+export type DestinationLocationUpdateInput = Partial<DestinationLocationInput>;
+
+/** A destination in a warehouse's route set, with distance computed at
+ * read time from both sides' current lat/lng (null if the warehouse has
+ * no coordinates set yet). */
+export interface WarehouseDestinationLocation {
+  id: string;
+  destination: DestinationLocation;
+  distance_km: number | null;
+  created_at: string;
 }
 
 export interface OperationTypeDiffItem {

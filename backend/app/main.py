@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     auth,
     credentials,
+    destination_locations,
     drivers,
     operation_types,
     planning,
@@ -30,6 +31,7 @@ app.include_router(users.router)
 app.include_router(credentials.router)
 app.include_router(operation_types.router)
 app.include_router(warehouses.router)
+app.include_router(destination_locations.router)
 app.include_router(vehicles.router)
 app.include_router(drivers.router)
 app.include_router(planning.router)

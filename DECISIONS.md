@@ -482,3 +482,58 @@ and shares it out of band — this was true of the original single seeded
 account too (`app/seed.py`), just now available through the UI instead of
 only a script. Logged as a TODO if this ever needs to scale past a
 handful of manually-added accounts per tenant.
+
+---
+
+## 2026-07-25 — Destination location library + per-warehouse route sets
+
+**Decision:** Added a reusable `DestinationLocation` library (name,
+address, required `lat`/`lng`) that admins can attach to any number of
+warehouses via a many-to-many join (`WarehouseDestinationLocation`), with
+distance from each warehouse shown per association. Also added
+admin-entered, nullable `lat`/`lng` columns directly on `SyncedWarehouse`.
+
+**Why a standalone entity instead of per-warehouse locations:** the user
+explicitly asked to "add destination location in several warehouse" — the
+same physical destination (e.g. a large retail customer) can receive
+deliveries staged from more than one warehouse, and duplicating it under
+each warehouse would fragment edits (fixing a typo'd address would need
+doing N times) and make "how many warehouses deliver here" unanswerable.
+
+**Reused `can_manage_warehouses` rather than a new permission flag:** this
+feature is squarely warehouse-adjacent (it exists to support route
+planning around warehouses) and the existing six-boolean permission model
+(see "Role vs. boolean permissions" above) was deliberately kept small;
+adding a seventh flag for a feature this closely tied to warehouse
+management would fragment permissions without a clear use case for
+granting one without the other.
+
+**Cascade-delete over block-delete for `DestinationLocation`:** unlike
+e.g. a warehouse referenced by a vehicle's `home_warehouse_id` (see
+"Archive instead of hard delete" — an entity depended on for
+correctness), a `WarehouseDestinationLocation` join row is a low-stakes
+reference. Deleting a destination removes it from every route set it was
+in rather than blocking the delete or requiring the admin to manually
+detach it from N warehouses first.
+
+**Distance computed at read time, never stored:** `app.services.
+destination_locations.distance_km` (haversine, reusing the existing
+`app.services.planning.haversine.haversine_distance_km` — not the
+frontend's separate `clustering.ts` port, which is client-side-only for
+the Load Planning board's fixture data) is called fresh on every list
+request. Either the warehouse's or the destination's coordinates can be
+edited after an association exists; caching the distance on the join row
+would silently go stale.
+
+**Warehouse `lat`/`lng` are admin-entered, not Odoo-synced:** Odoo's
+`res.partner` lat/lon field mapping was never confirmed (see SPEC.md
+"Odoo field mappings" — still a TODO row), so rather than block this
+feature on that unconfirmed mapping, warehouse coordinates are set
+directly through a new `PUT .../warehouses/{id}/coordinates` endpoint.
+Revisit and switch to Odoo-sourced values once that mapping is confirmed.
+
+**Deferred, not built:** the user also asked for a map visualization when
+arranging routes — each route in a distinct color, associated with a
+specific warehouse. Logged as a future item in TODO.md rather than built
+now; this batch is the data layer (destinations, route sets, distances)
+the map would eventually render.

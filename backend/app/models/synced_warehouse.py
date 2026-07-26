@@ -14,7 +14,14 @@ class SyncedWarehouse(Base):
     reused as-is, not a second inconsistent address structure.
 
     `active` is a soft-delete/archive flag, separate from `is_synced` — see
-    SyncedOperationType's docstring for the same pattern."""
+    SyncedOperationType's docstring for the same pattern.
+
+    `lat`/`lng` are admin-entered, not synced from Odoo — Odoo's
+    `res.partner` has no confirmed lat/lon field mapping yet (see
+    TODO.md's open questions), so rather than block the destination-
+    location/route-distance feature on that, warehouse coordinates are a
+    plain local override. Nullable: distance-to-destination just reads as
+    unavailable until they're set."""
 
     __tablename__ = "synced_warehouses"
 
@@ -35,6 +42,8 @@ class SyncedWarehouse(Base):
     zip: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     is_synced: Mapped[bool] = mapped_column(default=False, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    lat: Mapped[float | None] = mapped_column(nullable=True)
+    lng: Mapped[float | None] = mapped_column(nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
+from app.models.destination_location import DestinationLocation, WarehouseDestinationLocation
 from app.models.driver import Driver
 from app.models.odoo_credential import TenantOdooCredential
 from app.models.synced_operation_type import SyncedOperationType
@@ -20,6 +21,8 @@ _ALL_MODELS = (
     Vehicle,
     Driver,
     User,
+    DestinationLocation,
+    WarehouseDestinationLocation,
 )
 _SYNC_MODELS = _ALL_MODELS
 _FLEET_MODELS = _ALL_MODELS

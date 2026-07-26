@@ -1,5 +1,8 @@
 import type {
   AdminPasswordResetInput,
+  DestinationLocation,
+  DestinationLocationInput,
+  DestinationLocationUpdateInput,
   Driver,
   DriverInput,
   FleetVehicle,
@@ -19,6 +22,8 @@ import type {
   UserCreateInput,
   UserUpdateInput,
   Warehouse,
+  WarehouseCoordinatesInput,
+  WarehouseDestinationLocation,
   WarehouseRefreshPreview,
 } from "./types";
 
@@ -258,6 +263,85 @@ export function setWarehouseActive(
 
 export function deleteWarehouse(tenantId: string, warehouseId: string): Promise<void> {
   return request<void>(`/tenants/${tenantId}/warehouses/${warehouseId}`, { method: "DELETE" });
+}
+
+export function setWarehouseCoordinates(
+  tenantId: string,
+  warehouseId: string,
+  payload: WarehouseCoordinatesInput,
+): Promise<Warehouse> {
+  return request<Warehouse>(`/tenants/${tenantId}/warehouses/${warehouseId}/coordinates`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listWarehouseDestinationLocations(
+  tenantId: string,
+  warehouseId: string,
+): Promise<WarehouseDestinationLocation[]> {
+  return request<WarehouseDestinationLocation[]>(
+    `/tenants/${tenantId}/warehouses/${warehouseId}/destination-locations`,
+  );
+}
+
+export function addWarehouseDestinationLocation(
+  tenantId: string,
+  warehouseId: string,
+  destinationLocationId: string,
+): Promise<WarehouseDestinationLocation> {
+  return request<WarehouseDestinationLocation>(
+    `/tenants/${tenantId}/warehouses/${warehouseId}/destination-locations`,
+    {
+      method: "POST",
+      body: JSON.stringify({ destination_location_id: destinationLocationId }),
+    },
+  );
+}
+
+export function removeWarehouseDestinationLocation(
+  tenantId: string,
+  warehouseId: string,
+  destinationLocationId: string,
+): Promise<void> {
+  return request<void>(
+    `/tenants/${tenantId}/warehouses/${warehouseId}/destination-locations/${destinationLocationId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function listDestinationLocations(tenantId: string): Promise<DestinationLocation[]> {
+  return request<DestinationLocation[]>(`/tenants/${tenantId}/destination-locations`);
+}
+
+export function createDestinationLocation(
+  tenantId: string,
+  payload: DestinationLocationInput,
+): Promise<DestinationLocation> {
+  return request<DestinationLocation>(`/tenants/${tenantId}/destination-locations`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateDestinationLocation(
+  tenantId: string,
+  destinationLocationId: string,
+  payload: DestinationLocationUpdateInput,
+): Promise<DestinationLocation> {
+  return request<DestinationLocation>(
+    `/tenants/${tenantId}/destination-locations/${destinationLocationId}`,
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+}
+
+export function deleteDestinationLocation(
+  tenantId: string,
+  destinationLocationId: string,
+): Promise<void> {
+  return request<void>(`/tenants/${tenantId}/destination-locations/${destinationLocationId}`, {
+    method: "DELETE",
+  });
 }
 
 export function listVehicles(tenantId: string, includeArchived = false): Promise<FleetVehicle[]> {

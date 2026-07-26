@@ -6,6 +6,7 @@ import { CurrentUserProvider } from "./context/CurrentUserContext";
 import { OdooInstanceProvider } from "./context/OdooInstanceContext";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import ConnectionPage from "./pages/ConnectionPage";
+import DestinationLocationsPage from "./pages/DestinationLocationsPage";
 import DriversPage from "./pages/DriversPage";
 import LoadPlanningPage from "./pages/LoadPlanningPage";
 import LoginPage from "./pages/LoginPage";
@@ -48,6 +49,16 @@ export default function App() {
               <RequireAuth>
                 <RequirePermission permission="can_manage_warehouses">
                   <WarehousesPage />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/destinations"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="can_manage_warehouses">
+                  <DestinationLocationsPage />
                 </RequirePermission>
               </RequireAuth>
             }

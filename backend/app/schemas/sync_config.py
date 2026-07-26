@@ -60,6 +60,8 @@ class WarehouseRead(BaseModel):
     zip: str
     is_synced: bool
     active: bool
+    lat: float | None
+    lng: float | None
     last_seen_at: datetime | None
     created_at: datetime
     updated_at: datetime

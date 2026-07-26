@@ -94,6 +94,17 @@ gets done.
       DELETE endpoints for Operation Types/Warehouses (didn't exist before)
       that block with an "archive instead" message when referenced (see
       DECISIONS.md)
+- [x] Destination location library (`destination_locations` table) +
+      per-warehouse route sets (`warehouse_destination_locations` join,
+      many-to-many — a destination can be attached to several warehouses)
+      with distance computed at read time from admin-entered warehouse
+      `lat`/`lng` (new nullable columns on `synced_warehouses`, **not**
+      Odoo-synced) and the destination's required `lat`/`lng`. New
+      `destination_locations.py` router (CRUD) plus four new endpoints on
+      `warehouses.py` (set coordinates; list/add/remove a warehouse's route
+      set); deleting a destination cascades out of every route set instead
+      of blocking. Reuses `can_manage_warehouses` rather than a new
+      permission flag (see DECISIONS.md)
 
 ## Frontend
 
@@ -199,6 +210,14 @@ gets done.
 - [ ] Load Planning board: within-vehicle reorder (`@dnd-kit/sortable`),
       real API data instead of fixtures, capacity validation/blocking,
       backend persistence, shift-click range-select
+- [x] Destination Locations page (`/destinations`, gated on
+      `can_manage_warehouses`): a library CRUD section (name/address/
+      lat/lng, table with Edit/Delete) plus a per-warehouse route-set
+      manager (choose a warehouse, edit its lat/lng inline, list its
+      attached destinations with computed distance, add from the
+      unattached pool, remove per row). Nav link added next to
+      "Warehouses". Built on the existing base components, no new
+      design-system pattern introduced
 
 ## Infra
 
@@ -257,6 +276,19 @@ gets done.
 
 ## Next up
 
+- [ ] **Map visualization for route arrangement** — the user asked for this
+      explicitly ("Mark plan that I want the map visualization when
+      arrange the route") alongside the destination-location library work
+      above, but asked for it to be deferred ("do this first" referred to
+      the destination-location library only). When picked up: a map view
+      shown while arranging/planning a run, rendering each route as a
+      distinct color, with each route associated to a specific warehouse
+      (per the reference image the user shared — six differently-colored
+      routes fanning out from depot points across a metro area). The
+      destination-location library + per-warehouse route sets + warehouse
+      lat/lng built in this batch are the data this map would render —
+      no map rendering (e.g. Leaflet/Mapbox) has been added to the
+      frontend yet, so this also needs a mapping-library choice
 - [ ] `app/services/planning/runner.py::fetch_vehicles` still pulls
       `fleet.vehicle` directly from Odoo on every planning run — it does
       not use the local `vehicles` table at all. Discovered while building

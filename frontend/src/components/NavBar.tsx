@@ -18,6 +18,7 @@ const LINKS: NavLinkDef[] = [
   { to: "/connection", label: "Odoo Connection", permission: "can_manage_connection" },
   { to: "/operation-types", label: "Operation Types", permission: "can_manage_operation_types" },
   { to: "/warehouses", label: "Warehouses", permission: "can_manage_warehouses" },
+  { to: "/destinations", label: "Destinations", permission: "can_manage_warehouses" },
   { to: "/vehicles", label: "Vehicles", permission: "can_manage_fleet" },
   { to: "/drivers", label: "Drivers", permission: "can_manage_fleet" },
   { to: "/users", label: "Users", adminOnly: true },

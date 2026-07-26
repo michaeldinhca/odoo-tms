@@ -142,11 +142,58 @@ second, inconsistent structure). Populated by `POST
 | zip             | text              |                                               |
 | is_synced       | boolean           | default `false`; refresh never resets this on existing rows |
 | active          | boolean           | default `true`; archive flag — see `synced_operation_types` above |
+| lat             | float, nullable   | admin-entered via `PUT .../warehouses/{id}/coordinates` — **not** synced from Odoo (its `res.partner` lat/lon mapping was never confirmed, see "Odoo field mappings"); used only to compute distance to a destination location |
+| lng             | float, nullable   | same as `lat` above                          |
 | last_seen_at    | timestamptz, nullable |                                           |
 | created_at      | timestamptz       |                                               |
 | updated_at      | timestamptz       |                                               |
 
 Unique on `(tenant_id, odoo_warehouse_id)`.
+
+### `destination_locations`
+
+A reusable, admin-managed delivery destination — not tied to any one Odoo
+`stock.picking` (contrast with the Load Planning board's ephemeral
+`Picking` fixture data). One destination can be attached to several
+warehouses' route sets at once (`warehouse_destination_locations` below).
+
+| column      | type              | notes                                        |
+|-------------|-------------------|-----------------------------------------------|
+| id          | UUID (PK)         |                                                 |
+| tenant_id   | UUID (FK)         | references `tenants.id`                        |
+| name        | text              | required                                       |
+| street      | text              | default `""`                                   |
+| street2     | text              | default `""`                                   |
+| city        | text              | default `""`                                   |
+| state       | text              | default `""` — plain text, not a Odoo id+name pair (locally created, no Odoo `res.country.state` to reference) |
+| country     | text              | default `""`, same reasoning as `state`        |
+| zip         | text              | default `""`                                   |
+| lat         | float             | required                                       |
+| lng         | float             | required                                       |
+| created_at  | timestamptz       |                                                 |
+| updated_at  | timestamptz       |                                                 |
+
+Deleting a destination cascades: it's removed from every warehouse's route
+set it was attached to (the join row is deleted, not blocked) — see
+DECISIONS.md.
+
+### `warehouse_destination_locations`
+
+Many-to-many join: which destinations are in a given warehouse's route set.
+
+| column                    | type              | notes                                |
+|----------------------------|-------------------|-----------------------------------------|
+| id                         | UUID (PK)         |                                           |
+| tenant_id                  | UUID (FK)         | references `tenants.id`                  |
+| warehouse_id               | UUID (FK)         | references `synced_warehouses.id`        |
+| destination_location_id    | UUID (FK)         | references `destination_locations.id`    |
+| created_at                 | timestamptz       |                                           |
+
+Unique on `(warehouse_id, destination_location_id)` — the same destination
+may still appear under any number of *other* warehouses. Distance is **not**
+stored here; it's computed at read time from both sides' current lat/lng
+(`app.services.destination_locations.distance_km`, haversine) since either
+coordinate can be edited after the association is created.
 
 ### `synced_pickings`
 
@@ -356,6 +403,14 @@ address context needed to actually dispatch it, not just the picking ID.
 | PUT    | `/tenants/{id}/warehouses/{row_id}/sync` | toggle `is_synced` for one warehouse            | implemented |
 | PUT    | `/tenants/{id}/warehouses/{row_id}/archive` | toggle `active` (archive/unarchive)          | implemented |
 | DELETE | `/tenants/{id}/warehouses/{row_id}`  | delete; blocked (400) if a vehicle's `home_warehouse_id` or a `synced_pickings` row references it — archive instead | implemented |
+| PUT    | `/tenants/{id}/warehouses/{row_id}/coordinates` | set/clear admin-entered `lat`/`lng` (both nullable, to allow explicit clearing) | implemented |
+| GET    | `/tenants/{id}/warehouses/{row_id}/destination-locations` | this warehouse's route set — each destination plus distance from the warehouse (`null` if the warehouse has no coordinates yet) | implemented |
+| POST   | `/tenants/{id}/warehouses/{row_id}/destination-locations` | add a destination to this warehouse's route set; 404 if the destination doesn't exist, 400 if already in this warehouse's set (the same destination may still be added to other warehouses) | implemented |
+| DELETE | `/tenants/{id}/warehouses/{row_id}/destination-locations/{destination_id}` | remove from this warehouse's route set only — the destination itself, and its presence in any other warehouse's set, is untouched | implemented |
+| GET    | `/tenants/{id}/destination-locations` | list the tenant's destination library                       | implemented |
+| POST   | `/tenants/{id}/destination-locations` | create a destination                                          | implemented |
+| PUT    | `/tenants/{id}/destination-locations/{row_id}` | partial update (only provided fields applied)          | implemented |
+| DELETE | `/tenants/{id}/destination-locations/{row_id}` | delete; cascades — removes it from every warehouse's route set it was in, rather than blocking (see DECISIONS.md) | implemented |
 | GET    | `/tenants/{id}/vehicles`             | list vehicles (filter by `status_filter`, `home_warehouse_id`, `?include_archived=true`) | implemented |
 | POST   | `/tenants/{id}/vehicles`             | create a vehicle                                   | implemented |
 | GET    | `/tenants/{id}/vehicles/odoo-fleet-vehicles` | browse Odoo `fleet.vehicle` records (never auto-creates locally); also refreshes stale-link flags; requires `state=="active"` | implemented |
@@ -378,8 +433,10 @@ address context needed to actually dispatch it, not just the picking ID.
 No user self-registration/invite endpoint exists — see TODO.md.
 
 Every endpoint under `/tenants/{id}/credentials`, `/operation-types`,
-`/warehouses`, `/vehicles`, and `/drivers` requires the corresponding
-`can_manage_*` permission; every endpoint under `/planning` requires
+`/warehouses`, `/destination-locations`, `/vehicles`, and `/drivers`
+requires the corresponding `can_manage_*` permission (destination-locations
+reuses `can_manage_warehouses` — see DECISIONS.md); every endpoint under
+`/planning` requires
 `can_run_planning`. The Load Planning board has no backend endpoints of
 its own yet (still fixture data — see `design.md`), so `can_use_load_planning`
 is currently enforced only on the frontend route. See DECISIONS.md "Role

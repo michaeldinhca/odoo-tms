@@ -1,3 +1,4 @@
+from app.models.destination_location import DestinationLocation, WarehouseDestinationLocation
 from app.models.driver import Driver
 from app.models.odoo_credential import TenantOdooCredential
 from app.models.planning_run import PlanningRun
@@ -18,4 +19,6 @@ __all__ = [
     "SyncedPicking",
     "Vehicle",
     "Driver",
+    "DestinationLocation",
+    "WarehouseDestinationLocation",
 ]
